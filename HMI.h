@@ -2,7 +2,7 @@
 #define RADIUS 5
 
 enum pages {MAIN, SETTINGS, TEMP_ADJUST};
-enum settings {WIFI};
+enum settings_pages {WIFI, CALIBRATION};
 
 void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour)
 {

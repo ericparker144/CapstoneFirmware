@@ -6,11 +6,9 @@
 
 #define SW 800 // Screen Width
 #define SH 480 // Screen Height
-#define MAX_ALLOWABLE_TEMP 85
-#define MIN_ALLOWABLE_TEMP 55
-#define MAX_ALLOWABLE_TEMP_DIFFERENCE 4
+#define TEMPERATURE_READ_INTERVAL 3000
 
-
+custom_settings user_settings = {TEMP_MODE_FAHR, 0, 0.0};
 char previousTouch;
 char tag;
 unsigned long timeSinceLCDUpdate = 0;
@@ -32,13 +30,13 @@ int temp_selector = 0;
 
 
 pages screen = MAIN;
-settings settings_screen = WIFI;
+settings_pages settings_screen = WIFI;
 keyboard gui_keyboard(SW/4+10+40, 80+(SH-80)/2-10, 5, 45, 0x215968, 29);
 button wifi_scan = {3, SW-10-70, 80+40+30+60-15, 70, 30, 28, 0x215968, "Scan"};
 button wifi_connect = {9, (SW/4+SW)/2-5-100, 80+40+40+40-5, 100, 60, 28, 0x215968, "Connect"};
 button wifi_cancel = {10, (SW/4+SW)/2+5, 80+40+40+40-5, 100, 60, 28, 0x215968, "Cancel"};
 
-int num_of_zones;
+timer main_hub_temp_timer(TEMPERATURE_READ_INTERVAL);
 int selected_zone = 1;
 std::vector<zone> zones;
 
@@ -60,18 +58,30 @@ void setup()
     delay(3000);
 
 
-    // Fake data
-    EEPROM.write(EEPROM_START, 3);
-    Time.zone(-4);
-    num_of_zones = EEPROM.read(EEPROM_START);
+    // EEPROM.get(EEPROM_START, user_settings);
+    user_settings.temp_mode = TEMP_MODE_FAHR;
+    user_settings.num_of_zones = 3;
+    user_settings.time_zone = -4.0;
+    // Configure temperature reading pin
+    pinMode(A0, INPUT);
+    main_hub_temp_timer.setToZero();
+    Time.zone(user_settings.time_zone);
     networks_found = WiFi.scan(aps, 5);
     // WiFi.clearCredentials();
     // WiFi.setCredentials("Eric's Phone", "erociscool", WLAN_SEC_WPA2);
 
 
-    zone temp = {70, 66, 74, 1, "Living Room", 1, 20};
-    zone temp1 = {68, 64, 76, 1, "Basement", 2, 40};
-    zone temp2 = {72, 68, 78, 1, "Bedroom", 3, 50};
+    // Fake data
+    zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 1, 0};
+    zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 2, 0};
+    zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 3, 0};
+    temp.set_desired_min_temp(62, user_settings.temp_mode);
+    temp.set_desired_max_temp(80, user_settings.temp_mode);
+    temp1.set_desired_min_temp(63, user_settings.temp_mode);
+    temp1.set_desired_max_temp(81, user_settings.temp_mode);
+    temp2.set_desired_min_temp(60, user_settings.temp_mode);
+    temp2.set_desired_max_temp(79, user_settings.temp_mode);
+
     zones.push_back(temp);
     zones.push_back(temp1);
     zones.push_back(temp2);
@@ -96,6 +106,23 @@ void setup()
 
 void loop()
 {
+
+    auto it = zones.begin();
+
+    if (main_hub_temp_timer.check()) {
+        (*it).temp = analogRead(A0);
+        main_hub_temp_timer.reset();
+    }
+
+    // Reference to selected zone object
+    for (int i = 1; i < selected_zone; i++) {
+        ++it;
+    }
+
+
+
+
+
     GD.get_inputs();
     tag = GD.inputs.tag;
 
@@ -123,18 +150,18 @@ void loop()
         if (screen == MAIN) {
 
             // Prevent swiping right if on the first zone, or left if on the last zone, or in either direction if only one zone
-            if (((selected_zone == 1) && (x_drag > 0)) || ((selected_zone == num_of_zones) && (x_drag < 0)) || (num_of_zones == 1)) {
+            if (((selected_zone == 1) && (x_drag > 0)) || ((selected_zone == user_settings.num_of_zones) && (x_drag < 0)) || (user_settings.num_of_zones == 1)) {
                 x_drag = 0;
             }
             // Handle acceptable swipes on first and last zones
-            else if ((selected_zone == 1) && (x_drag < -120) && (num_of_zones > 1)) {
+            else if ((selected_zone == 1) && (x_drag < -120) && (user_settings.num_of_zones > 1)) {
                 selected_zone++;
             }
-            else if ((selected_zone == num_of_zones) && (x_drag > 120) && (num_of_zones > 1)) {
+            else if ((selected_zone == user_settings.num_of_zones) && (x_drag > 120) && (user_settings.num_of_zones > 1)) {
                 selected_zone--;
             }
             // Allow swiping left and right if in middle zones
-            else if ((selected_zone > 1) && (selected_zone < num_of_zones)) {
+            else if ((selected_zone > 1) && (selected_zone < user_settings.num_of_zones)) {
                 if (x_drag > 120) {
                     selected_zone--;
                 }
@@ -156,16 +183,10 @@ void loop()
     }
 
 
-    // Reference to selected zone object
-    auto it = zones.begin();
-    for (int i = 1; i < selected_zone; i++) {
-        ++it;
-    }
-
-
     if (tag != previousTouch) {
         if (screen == MAIN) {
             if (previousTouch == 1) {
+                networks_found = WiFi.scan(aps, 5);
                 screen = SETTINGS;
             }
             else if ((previousTouch == 2) || (previousTouch == 3)) {
@@ -174,7 +195,14 @@ void loop()
             }
         }
         else if (screen == TEMP_ADJUST) {
+            // Convert all to ADC values to make comparison possible
+            int one_degree = (*it).conv_temp_to_adc(1, user_settings.temp_mode) - (*it).conv_temp_to_adc(0, user_settings.temp_mode);
+            int MAX_ALLOWABLE_TEMP = (*it).conv_fahr_to_adc(85);
+            int MIN_ALLOWABLE_TEMP = (*it).conv_fahr_to_adc(55);
+            int MAX_ALLOWABLE_TEMP_DIFFERENCE = 4*one_degree;
+
             if (previousTouch == 1) {
+                networks_found = WiFi.scan(aps, 5);
                 screen = SETTINGS;
             }
             else if (previousTouch == 2) {
@@ -182,22 +210,22 @@ void loop()
             }
             else if (previousTouch == 3) {
                 // attempting to decrement upper limit
-                if ((temp_selector == 2) && (((*it).max_temp - 1 - (*it).min_temp) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).max_temp - 1) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp - 1) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).max_temp--;
+                if ((temp_selector == 2) && (((*it).max_temp - one_degree - (*it).min_temp) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).max_temp - one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp - one_degree) >= MIN_ALLOWABLE_TEMP)) {
+                    (*it).max_temp -= one_degree;
                 }
                 // attempting to decrement lower limit
-                else if ((temp_selector == 3) && (((*it).min_temp - 1) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp - 1) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).min_temp--;
+                else if ((temp_selector == 3) && (((*it).min_temp - one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp - one_degree) >= MIN_ALLOWABLE_TEMP)) {
+                    (*it).min_temp -= one_degree;
                 }
             }
             else if (previousTouch == 4) {
                 // attempting to increment upper limit
-                if ((temp_selector == 2) && (((*it).max_temp + 1) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp + 1) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).max_temp++;
+                if ((temp_selector == 2) && (((*it).max_temp + one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp + one_degree) >= MIN_ALLOWABLE_TEMP)) {
+                    (*it).max_temp += one_degree;
                 }
                 // attempting to increment lower limit
-                else if ((temp_selector == 3) && (((*it).max_temp - ((*it).min_temp + 1)) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).min_temp + 1) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp + 1) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).min_temp++;
+                else if ((temp_selector == 3) && (((*it).max_temp - ((*it).min_temp + one_degree)) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).min_temp + one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp + one_degree) >= MIN_ALLOWABLE_TEMP)) {
+                    (*it).min_temp += one_degree;
                 }
             }
         }
@@ -207,6 +235,7 @@ void loop()
                 screen = MAIN;
             }
             else if (previousTouch == 2) {
+                networks_found = WiFi.scan(aps, 5);
                 settings_screen = WIFI;
             }
             else if (previousTouch == wifi_scan.tag) {
@@ -223,6 +252,9 @@ void loop()
             }
             else if (previousTouch == wifi_cancel.tag) {
                 wifi_network_selected = 0;
+            }
+            else if (previousTouch == 11) {
+                settings_screen = CALIBRATION;
             }
             else if (previousTouch == gui_keyboard.keyboard_shift_lock.tag) {
                 gui_keyboard.shift_press();
@@ -254,7 +286,7 @@ void loop()
             if (subpage == 0 && x_drag > 0) {
                 x_drag = 0;
             }
-            else if (subpage == num_of_zones && x_drag < 0) {
+            else if (subpage == user_settings.num_of_zones && x_drag < 0) {
                 x_drag = 0;
             }
 
@@ -278,34 +310,34 @@ void loop()
             GD.Begin(POINTS);
             GD.ColorRGB(0xffffff);
             GD.PointSize(5*16);
-            for (int i = 0; i < num_of_zones; i++) {
-                GD.Vertex2f(SW/2 + i*15 - 15*(num_of_zones-1)/2, 80);
+            for (int i = 0; i < user_settings.num_of_zones; i++) {
+                GD.Vertex2f(SW/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80);
             }
             GD.ColorRGB(0x000000);
             GD.PointSize(3*16);
-            for (int i = 0; i < num_of_zones; i++) {
+            for (int i = 0; i < user_settings.num_of_zones; i++) {
                 if ((selected_zone - 1) == i) {
                     continue;
                 }
-                GD.Vertex2f(SW/2 + i*15 - 15*(num_of_zones-1)/2, 80);
+                GD.Vertex2f(SW/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80);
             }
 
             GD.ColorRGB(0xffffff);
             GD.cmd_romfont(1, 34);
             GD.cmd_text(SW/2, 40, 30, OPT_CENTER, (*it).zone_name);
-            GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).temp);
+            GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).conv_adc_to_temp((*it).temp, user_settings.temp_mode));
 
             GD.Tag(2);
             GD.ColorRGB(0xffffff);
             GD.cmd_text(SW/2+100, SH/2+80, 27, OPT_CENTER, "Upper Limit");
             GD.ColorRGB(0xd72539);
-            GD.cmd_number(SW/2+100, SH/2+80+40, 31, OPT_CENTER, (*it).max_temp);
+            GD.cmd_number(SW/2+100, SH/2+80+40, 31, OPT_CENTER, (*it).conv_adc_to_temp((*it).max_temp, user_settings.temp_mode));
 
             GD.Tag(3);
             GD.ColorRGB(0xffffff);
             GD.cmd_text(SW/2-100, SH/2+80, 27, OPT_CENTER, "Lower Limit");
             GD.ColorRGB(0x3a7fe8);
-            GD.cmd_number(SW/2-100, SH/2+80+40, 31, OPT_CENTER, (*it).min_temp);
+            GD.cmd_number(SW/2-100, SH/2+80+40, 31, OPT_CENTER, (*it).conv_adc_to_temp((*it).min_temp, user_settings.temp_mode));
 
 
 
@@ -340,12 +372,12 @@ void loop()
             if (temp_selector == 2) {
                 GD.cmd_text(SW/2, SH/2-80, 30, OPT_CENTER, "Upper Limit");
                 GD.ColorRGB(0xd72539);
-                GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).max_temp);
+                GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).conv_adc_to_temp((*it).max_temp, user_settings.temp_mode));
             }
             else if (temp_selector == 3) {
                 GD.cmd_text(SW/2, SH/2-80, 30, OPT_CENTER, "Lower Limit");
                 GD.ColorRGB(0x3a7fe8);
-                GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).min_temp);
+                GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).conv_adc_to_temp((*it).min_temp, user_settings.temp_mode));
             }
 
 
@@ -421,10 +453,13 @@ void loop()
             if (settings_screen == WIFI) {
                 strncpy(settings_title, "Wi-Fi", sizeof(settings_title));
             }
+            else if (settings_screen == CALIBRATION) {
+                strncpy(settings_title, "Calibration", sizeof(settings_title));
+            }
 
             GD.cmd_text((SW-10-100 + SW/4)/2, 80/2, 29, OPT_CENTER, settings_title);
 
-            int num_of_settings = 10;
+            int num_of_settings = 5;
             for (int i = 1; i <= num_of_settings; i++) {
 
                 GD.ColorRGB(0x868686);
@@ -441,14 +476,18 @@ void loop()
                     GD.Tag(255);
                 }
 
+                else if (i == 2) {
+                    GD.Tag(11);
+                    drawRect(0+2, 80+((SH-80)/num_of_settings)*(i-1)+2, SW/4-4, ((SH-80)/num_of_settings)-4, 0x000000);
+                    GD.ColorRGB(0xffffff);
+                    GD.cmd_text(SW/4/2, 80+((SH-80)/num_of_settings)*(i-0.5), 28, OPT_CENTER, "Calibration");
+                    GD.Tag(255);
+                }
+
             }
 
 
             if (settings_screen == WIFI) {
-
-
-
-
 
                 if (wifi_network_selected) {
                     // Enter username and password for chosen network
@@ -543,7 +582,8 @@ void loop()
                     GD.Tag(255);
 
                 }
-
+            }
+            else if (settings_screen == CALIBRATION) {
 
             }
 
