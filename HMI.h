@@ -2,7 +2,7 @@
 #define RADIUS 5
 
 enum pages {MAIN, SETTINGS, TEMP_ADJUST};
-enum settings_pages {WIFI, CALIBRATION};
+enum settings_pages {WIFI, CALIBRATION, NETWORK};
 
 void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour)
 {
@@ -19,6 +19,25 @@ void drawRoundedRect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour
         GD.LineWidth(1*16);
 }
 
+
+void drawVent(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour) {
+    drawRect(x, y, w, h, colour);
+    GD.ColorRGB(0x000000);
+    int num_of_slits = 4;
+    int side_size = w/10;
+    int slit_height = h/(num_of_slits*2 + 1);
+
+    for (int i = 1; i < 2*num_of_slits + 1; i+=2) {
+        drawRect(x+side_size, y + i*slit_height + 3, w-2*side_size, slit_height, 0x000000);
+    }
+}
+
+void drawBattery(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour) {
+
+    drawRect(x, y, w, h, colour);
+    drawRect(x+w/4, y-h/8, w/2, h/8, colour);
+
+}
 
 
 

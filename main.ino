@@ -8,7 +8,7 @@
 #define SH 480 // Screen Height
 #define TEMPERATURE_READ_INTERVAL 3000
 
-custom_settings user_settings = {TEMP_MODE_FAHR, 0, 0.0};
+custom_settings user_settings = {TEMP_MODE_FAHR, 0, 0, 0.0};
 char previousTouch;
 char tag;
 unsigned long timeSinceLCDUpdate = 0;
@@ -16,6 +16,7 @@ int networks_found;
 WiFiAccessPoint aps[5];
 int wifi_network_selected = 0;
 char wifi_password[25] = {'\0'};
+int calibration_helper;
 
 
 // Variables used to implement dragging
@@ -30,16 +31,19 @@ int temp_selector = 0;
 
 
 pages screen = MAIN;
+pages previousScreen = MAIN;
 settings_pages settings_screen = WIFI;
+settings_pages previous_settings_screen = WIFI;
 keyboard gui_keyboard(SW/4+10+40, 80+(SH-80)/2-10, 5, 45, 0x215968, 29);
 button wifi_scan = {3, SW-10-70, 80+40+30+60-15, 70, 30, 28, 0x215968, "Scan"};
 button wifi_connect = {9, (SW/4+SW)/2-5-100, 80+40+40+40-5, 100, 60, 28, 0x215968, "Connect"};
 button wifi_cancel = {10, (SW/4+SW)/2+5, 80+40+40+40-5, 100, 60, 28, 0x215968, "Cancel"};
+button calibrate_btn = {12, (SW/4 + SW)/2-125,SH/2+40+40+80-20,250,40, 29, 0x215968, "Done"};
 
 timer main_hub_temp_timer(TEMPERATURE_READ_INTERVAL);
 int selected_zone = 1;
 std::vector<zone> zones;
-
+std::vector<vent> vents;
 
 
 
@@ -49,32 +53,43 @@ void setup()
 
     Serial.begin(9600);
     // EEPROM.write(10, 0); // Calibrate screen
-
+    delay(2000);
 
     GD.begin();
     // GD.cmd_calibrate();
     GD.cmd_setrotate(0);
 
-    delay(3000);
-
 
     // EEPROM.get(EEPROM_START, user_settings);
     user_settings.temp_mode = TEMP_MODE_FAHR;
     user_settings.num_of_zones = 3;
+    user_settings.num_of_vents = 4;
     user_settings.time_zone = -4.0;
     // Configure temperature reading pin
     pinMode(A0, INPUT);
     main_hub_temp_timer.setToZero();
     Time.zone(user_settings.time_zone);
     networks_found = WiFi.scan(aps, 5);
+    if (user_settings.temp_mode == TEMP_MODE_FAHR) {
+        calibration_helper = 72;
+    }
+    else {
+        calibration_helper = 22;
+    }
     // WiFi.clearCredentials();
     // WiFi.setCredentials("Eric's Phone", "erociscool", WLAN_SEC_WPA2);
 
 
     // Fake data
-    zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 1, 0};
-    zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 2, 0};
-    zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 3, 0};
+
+    vent vent1 = {011, true};
+    vent vent2 = {012, true};
+    vent vent3 = {021, false};
+    vent vent4 = {031, true};
+
+    zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 01, 0, true};
+    zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 02, 0, true};
+    zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 03, 0, true};
     temp.set_desired_min_temp(62, user_settings.temp_mode);
     temp.set_desired_max_temp(80, user_settings.temp_mode);
     temp1.set_desired_min_temp(63, user_settings.temp_mode);
@@ -85,6 +100,11 @@ void setup()
     zones.push_back(temp);
     zones.push_back(temp1);
     zones.push_back(temp2);
+
+    vents.push_back(vent1);
+    vents.push_back(vent2);
+    vents.push_back(vent3);
+    vents.push_back(vent4);
 
 
     for (auto i : zones) {
@@ -147,7 +167,7 @@ void loop()
 
 
         // Handle drag
-        if (screen == MAIN) {
+        if ((screen == MAIN) || ((screen == SETTINGS) && (settings_screen == CALIBRATION)) || ((screen == SETTINGS) && (settings_screen == NETWORK))) {
 
             // Prevent swiping right if on the first zone, or left if on the last zone, or in either direction if only one zone
             if (((selected_zone == 1) && (x_drag > 0)) || ((selected_zone == user_settings.num_of_zones) && (x_drag < 0)) || (user_settings.num_of_zones == 1)) {
@@ -202,7 +222,6 @@ void loop()
             int MAX_ALLOWABLE_TEMP_DIFFERENCE = 4*one_degree;
 
             if (previousTouch == 1) {
-                networks_found = WiFi.scan(aps, 5);
                 screen = SETTINGS;
             }
             else if (previousTouch == 2) {
@@ -235,7 +254,6 @@ void loop()
                 screen = MAIN;
             }
             else if (previousTouch == 2) {
-                networks_found = WiFi.scan(aps, 5);
                 settings_screen = WIFI;
             }
             else if (previousTouch == wifi_scan.tag) {
@@ -256,8 +274,20 @@ void loop()
             else if (previousTouch == 11) {
                 settings_screen = CALIBRATION;
             }
+            else if (previousTouch == calibrate_btn.tag) {
+                (*it).calibrate(calibration_helper, (*it).temp, user_settings.temp_mode);
+            }
+            else if (previousTouch == 13) {
+                calibration_helper--;
+            }
+            else if (previousTouch == 14) {
+                calibration_helper++;
+            }
             else if (previousTouch == gui_keyboard.keyboard_shift_lock.tag) {
                 gui_keyboard.shift_press();
+            }
+            else if (previousTouch == 17) {
+                settings_screen = NETWORK;
             }
             else if (previousTouch == gui_keyboard.keyboard_BS.tag) {
                 if (strlen(wifi_password) > 0) {
@@ -273,6 +303,28 @@ void loop()
         }
     }
 
+
+    // Handle screen changes
+    if ((screen != previousScreen) || (settings_screen != previous_settings_screen)) {
+        if ((screen == SETTINGS) && (settings_screen == CALIBRATION)) {
+            if (user_settings.temp_mode == TEMP_MODE_FAHR) {
+                calibration_helper = 72;
+            }
+            else {
+                calibration_helper = 22;
+            }
+        }
+
+    }
+
+
+
+
+
+
+
+    previous_settings_screen = settings_screen;
+    previousScreen = screen;
     previousTouch = tag;
 
 
@@ -325,7 +377,7 @@ void loop()
             GD.ColorRGB(0xffffff);
             GD.cmd_romfont(1, 34);
             GD.cmd_text(SW/2, 40, 30, OPT_CENTER, (*it).zone_name);
-            GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).conv_adc_to_temp((*it).temp, user_settings.temp_mode));
+            GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).get_calibrated_temp(user_settings.temp_mode));
 
             GD.Tag(2);
             GD.ColorRGB(0xffffff);
@@ -456,6 +508,9 @@ void loop()
             else if (settings_screen == CALIBRATION) {
                 strncpy(settings_title, "Calibration", sizeof(settings_title));
             }
+            else if (settings_screen == NETWORK) {
+                strncpy(settings_title, "Network", sizeof(settings_title));
+            }
 
             GD.cmd_text((SW-10-100 + SW/4)/2, 80/2, 29, OPT_CENTER, settings_title);
 
@@ -481,6 +536,14 @@ void loop()
                     drawRect(0+2, 80+((SH-80)/num_of_settings)*(i-1)+2, SW/4-4, ((SH-80)/num_of_settings)-4, 0x000000);
                     GD.ColorRGB(0xffffff);
                     GD.cmd_text(SW/4/2, 80+((SH-80)/num_of_settings)*(i-0.5), 28, OPT_CENTER, "Calibration");
+                    GD.Tag(255);
+                }
+
+                else if (i == 3) {
+                    GD.Tag(17);
+                    drawRect(0+2, 80+((SH-80)/num_of_settings)*(i-1)+2, SW/4-4, ((SH-80)/num_of_settings)-4, 0x000000);
+                    GD.ColorRGB(0xffffff);
+                    GD.cmd_text(SW/4/2, 80+((SH-80)/num_of_settings)*(i-0.5), 28, OPT_CENTER, "Network");
                     GD.Tag(255);
                 }
 
@@ -516,6 +579,9 @@ void loop()
 
                 }
                 else {
+
+                    GD.Tag(255);
+
                     // list networks
                     char txtBuffer[50];
 
@@ -585,7 +651,151 @@ void loop()
             }
             else if (settings_screen == CALIBRATION) {
 
+                GD.Tag(255);
+
+                if (subpage == 0 && x_drag > 0) {
+                    x_drag = 0;
+                }
+                else if (subpage == user_settings.num_of_zones && x_drag < 0) {
+                    x_drag = 0;
+                }
+
+
+                GD.Begin(POINTS);
+                GD.ColorRGB(0xffffff);
+                GD.PointSize(5*16);
+                for (int i = 0; i < user_settings.num_of_zones; i++) {
+                    GD.Vertex2f((SW/4 + SW)/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80+80);
+                }
+                GD.ColorRGB(0x000000);
+                GD.PointSize(3*16);
+                for (int i = 0; i < user_settings.num_of_zones; i++) {
+                    if ((selected_zone - 1) == i) {
+                        continue;
+                    }
+                    GD.Vertex2f((SW/4 + SW)/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80+80);
+                }
+
+                GD.ColorRGB(0xffffff);
+                GD.cmd_text((SW/4 + SW)/2, 40+80, 30, OPT_CENTER, (*it).zone_name);
+
+                GD.cmd_text((SW/4 + SW)/2, 40+80+80+40, 28, OPT_CENTER, "Current Temperature");
+                GD.cmd_romfont(1, 34);
+                GD.cmd_number((SW/4 + SW)/2, SH/2+40+40, 1, OPT_CENTER, calibration_helper);
+
+
+
+
+                calibrate_btn.draw(tag);
+
+                GD.Tag(13);
+                GD.Begin(POINTS);
+                GD.PointSize(35*16);
+                GD.ColorRGB(0xffffff);
+                GD.Vertex2f((SW/4 + SW)/2-200, SH/2+40+40);
+                GD.PointSize(33*16);
+                GD.ColorRGB(0x000000);
+                GD.Vertex2f((SW/4 + SW)/2-200, SH/2+40+40);
+                GD.ColorRGB(0xffffff);
+                GD.cmd_text((SW/4 + SW)/2-200, SH/2+40+40, 31, OPT_CENTER, "-");
+
+                GD.Tag(14);
+                GD.Begin(POINTS);
+                GD.PointSize(35*16);
+                GD.ColorRGB(0xffffff);
+                GD.Vertex2f((SW/4 + SW)/2+200, SH/2+40+40);
+                GD.PointSize(33*16);
+                GD.ColorRGB(0x000000);
+                GD.Vertex2f((SW/4 + SW)/2+200, SH/2+40+40);
+                GD.ColorRGB(0xffffff);
+                GD.cmd_text((SW/4 + SW)/2+200, SH/2+40+40, 31, OPT_CENTER, "+");
+
+                GD.Tag(255);
+
             }
+
+            else if (settings_screen == NETWORK) {
+
+                GD.Tag(255);
+
+                if (subpage == 0 && x_drag > 0) {
+                    x_drag = 0;
+                }
+                else if (subpage == user_settings.num_of_zones && x_drag < 0) {
+                    x_drag = 0;
+                }
+
+
+                GD.Begin(POINTS);
+                GD.ColorRGB(0xffffff);
+                GD.PointSize(5*16);
+                for (int i = 0; i < user_settings.num_of_zones; i++) {
+                    GD.Vertex2f((SW/4 + SW)/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80+80);
+                }
+                GD.ColorRGB(0x000000);
+                GD.PointSize(3*16);
+                for (int i = 0; i < user_settings.num_of_zones; i++) {
+                    if ((selected_zone - 1) == i) {
+                        continue;
+                    }
+                    GD.Vertex2f((SW/4 + SW)/2 + i*15 - 15*(user_settings.num_of_zones-1)/2, 80+80);
+                }
+
+                GD.ColorRGB(0xffffff);
+                GD.cmd_text((SW/4 + SW)/2, 40+80, 30, OPT_CENTER, (*it).zone_name);
+
+                GD.Begin(POINTS);
+                GD.PointSize(26*16);
+                GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
+                GD.PointSize(22*16);
+                GD.ColorRGB(0x222222);
+                GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
+                if ((*it).batState) {
+                    drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0x00923f);
+                }
+                else {
+                    drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0xeb3332);
+                }
+
+
+
+
+                std::vector<vent> vents_in_zone;
+                int selected_zone_address = (*it).address;
+
+                for (auto i : vents) {
+                    if (i.zone_number() == selected_zone_address) {
+                        // Vent belongs to this zone
+                        vents_in_zone.push_back(i);
+                    }
+                }
+
+                int num_of_vents_in_zone = vents_in_zone.size();
+                auto vents_it = vents_in_zone.begin();
+
+                for (int i = 0; i < num_of_vents_in_zone; i++) {
+                    drawVent((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2-50, SH/2+40+40-30+80, 100, 60, 0xffffff);
+                    if ((*vents_it).batState) {
+                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80, 18, 30, 0x00923f);
+                    }
+                    else {
+                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80, 18, 30, 0xeb3332);
+                    }
+
+
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
 
 
 
