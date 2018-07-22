@@ -5,6 +5,8 @@
 #define ATMEGA_ADC_MAX_VOLTAGE 3.3
 #define TEMP_MODE_FAHR 1
 #define TEMP_MODE_CELS 0
+#define DEGREES_FULLY_OPEN 180
+#define DEGREES_FULLY_CLOSED 90
 
 #ifndef PHOTON
     #define PHOTON 1
@@ -13,6 +15,7 @@
     #define ATMEGA 0
 #endif
 
+#include <vector>
 
 // EEPROM Structure
 //          _____________________
@@ -35,8 +38,9 @@ struct custom_settings {
 
 };
 
-
-
+boolean is_router(int address) {
+    return (((address & 00000000070) >> 3) == 0);
+}
 
 struct vent {
 
@@ -44,12 +48,12 @@ struct vent {
     boolean batState;
 
     int zone_number() {
-        return (address & 00000000070) >> 3;
-    }
-
-    int vent_number() {
         return address % 8;
     }
+
+    // int vent_number() {
+    //     return (address & 00000000070) >> 3;
+    // }
 
 };
 
@@ -113,7 +117,9 @@ public:
         }
     }
 
-
+    int get_calibrated_temp_adc() {
+        return temp - calibration_factor;
+    }
 
     int conv_adc_to_temp(int temp_adc, int temp_mode) {
         if (temp_mode == TEMP_MODE_FAHR) {
@@ -214,7 +220,15 @@ private:
     boolean enabled = true;
 
 public:
+    timer() {
+
+    }
+
 	timer(uint32_t _time) {
+        value = _time;
+    }
+
+    void setValue(uint32_t _time) {
         value = _time;
     }
 
@@ -242,6 +256,232 @@ public:
     void disable() {
         enabled = false;
     }
+};
+
+
+
+class zone_command_metadata {
+
+public:
+    uint32_t address;
+    int temp_indicator; // 0 if within temp range, 1 if below min_temp, 2 if above max_temp
+    int out_of_range_count;
+};
+
+
+
+
+class command_manager {
+
+public:
+    int allowable_out_of_range = 2;
+    timer command_delay;
+    int current_zone = 1;
+    int num_of_zones;
+    std::vector<zone_command_metadata> zones_to_control;
+    boolean heat_on = false;
+    // std::vector<zone_command_metadata> suspect_zones; // Zones that may be moved to zones_to_service if they are out of range too many times
+    // std::queue<zone_command_metadata> zones_to_service; // Zones that will
+
+    void init(std::vector<zone> zones) {
+        command_delay.setValue(1000);
+        command_delay.setToZero();
+        num_of_zones = zones.size();
+        for (auto it = zones.begin(); it != zones.end(); ++it) {
+            zone_command_metadata temp = {(*it).address, 0, 0};
+            zones_to_control.push_back(temp);
+        }
+    }
+
+    void add_zone(zone _zone) {
+        num_of_zones++;
+        zone_command_metadata temp = {_zone.address, 0, 0};
+        zones_to_control.push_back(temp);
+    }
+
+    // Call this every time a message is received from a router
+    void update_zone(zone _zone) {
+        auto it = zones_to_control.begin();
+        for (it = zones_to_control.begin(); it != zones_to_control.end(); ++it) {
+            if (_zone.address == (*it).address) {
+                break;
+            }
+        }
+
+        if (_zone.get_calibrated_temp_adc() < _zone.min_temp) {
+            switch ((*it).temp_indicator) {
+                case 0:
+                    (*it).out_of_range_count = 1;
+                    break;
+                case 1:
+                    (*it).out_of_range_count += 1;
+                    break;
+                case 2:
+                    (*it).out_of_range_count = 1;
+                    break;
+            }
+            (*it).temp_indicator = 1;
+        }
+        else if (_zone.get_calibrated_temp_adc() > _zone.max_temp) {
+            switch ((*it).temp_indicator) {
+                case 0:
+                    (*it).out_of_range_count = 1;
+                    break;
+                case 1:
+                    (*it).out_of_range_count = 1;
+                    break;
+                case 2:
+                    (*it).out_of_range_count += 1;
+                    break;
+            }
+            (*it).temp_indicator = 2;
+        }
+        else {
+            (*it).out_of_range_count = 0;
+            (*it).temp_indicator = 0;
+        }
+    }
+
+
+
+    void execute() {
+        if (command_delay.check()) {
+
+            Serial.printf("# of zones: %d", num_of_zones);
+            Serial.println();
+            Serial.printf("Current Zone: %d", current_zone);
+            Serial.println();
+
+            auto it = zones_to_control.begin();
+            for (int i = 1; i < current_zone; i++) {
+                ++it;
+            }
+
+            int degrees;
+
+            Serial.printf("Temp indicator: %d", (*it).temp_indicator);
+            Serial.println();
+
+            switch ((*it).temp_indicator) {
+                case 1:
+                    degrees = DEGREES_FULLY_OPEN;
+                    heat_on = true;
+                    break;
+                case 0:
+                case 2:
+                    degrees = DEGREES_FULLY_CLOSED;
+                    boolean needs_heat = false;
+                    for (auto test_all_zones = zones_to_control.begin(); test_all_zones != zones_to_control.end(); ++test_all_zones) {
+                        if ((*test_all_zones).temp_indicator == 1) {
+                            needs_heat = true;
+                        }
+                    }
+                    heat_on = needs_heat;
+                    break;
+            }
+
+            Serial.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+            Serial.println();
+            Serial1.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+            Serial.println();
+
+
+            if (current_zone == num_of_zones) {
+                current_zone = 1;
+            }
+            else {
+                current_zone++;
+            }
+
+            command_delay.reset();
+        }
+    }
+
+
+
+
+
+    // Call this every time a new temperature value is received
+    // void check_zone(zone _zone) {
+    //
+    //     if (_zone.temp < _zone.min_temp) {
+    //         // Check to see if zone is already suspect
+    //         auto it;
+    //         for (it = suspect_zones.begin(); it != suspect_zones.end(); ++it) {
+    //             if ((*it).address == address) {
+    //                 break;
+    //             }
+    //         }
+    //
+    //         if (it == suspect_zones.end()) {
+    //             // Zone not already suspect - add it to suspect vector
+    //             zone_command_metadata new_suspect = {_zone.address, true, 1};
+    //             suspect_zones.push_back(new_suspect);
+    //         }
+    //         else {
+    //             // Zone already in suspect vector
+    //             if ((*it).too_cold == true) {
+    //                 (*it).out_of_range_count++;
+    //                 if ((*it).out_of_range_count >= allowable_out_of_range) {
+    //                     zones_to_service.push((*it));
+    //                     suspect_zones.erase(it);
+    //                 }
+    //             }
+    //             else {
+    //                 suspect_zones.erase(it);
+    //             }
+    //         }
+    //     }
+    //     else if (_zone.temp > _zone.max_temp) {
+    //
+    //         // Check to see if zone is already suspect
+    //         auto it;
+    //         for (it = suspect_zones.begin(); it != suspect_zones.end(); ++it) {
+    //             if ((*it).address == address) {
+    //                 break;
+    //             }
+    //         }
+    //
+    //         if (it == suspect_zones.end()) {
+    //             // Zone not already suspect - add it to suspect vector
+    //             zone_command_metadata new_suspect = {_zone.address, false, 1};
+    //             suspect_zones.push_back(new_suspect);
+    //         }
+    //         else {
+    //             // Zone already in suspect vector
+    //             if ((*it).too_cold == false) {
+    //                 (*it).out_of_range_count++;
+    //                 if ((*it).out_of_range_count >= allowable_out_of_range) {
+    //                     zones_to_service.push((*it));
+    //                     suspect_zones.erase(it);
+    //                 }
+    //             }
+    //             else {
+    //                 suspect_zones.erase(it);
+    //             }
+    //         }
+    //     }
+    // }
+
+
+    // Call this if the zones_to_service queue is not empty
+    // void send_command(std::vector<zone> zones) {
+    //     if ((!zones_to_service.empty()) && (command_delay.check())) {
+    //
+    //         zone_command_metadata zone_to_service = zones_to_service.pop();
+    //
+    //         if (too_cold)
+    //
+    //         Serial1.printf("{address:%d,degrees:%d}", zone_to_service.address, degrees);
+    //         command_delay.reset();
+    //     }
+    // }
+
+
+
+
+
+
 };
 
 

@@ -6,7 +6,15 @@
 
 #define SW 800 // Screen Width
 #define SH 480 // Screen Height
-#define TEMPERATURE_READ_INTERVAL 3000
+#define TEMPERATURE_READ_INTERVAL 10000
+#define SERIAL_BUFFER_SIZE 50
+#define DEFAULT_MIN_TEMP_FAHR 68
+#define DEFAULT_MAX_TEMP_FAHR 74
+#define DEFAULT_MIN_TEMP_CELS 20
+#define DEFAULT_MAX_TEMP_CELS 24
+
+char serial_buffer[SERIAL_BUFFER_SIZE] = {'\0'};
+size_t serial_buffer_offset = 0;
 
 custom_settings user_settings = {TEMP_MODE_FAHR, 0, 0, 0.0};
 char previousTouch;
@@ -17,6 +25,8 @@ WiFiAccessPoint aps[5];
 int wifi_network_selected = 0;
 char wifi_password[25] = {'\0'};
 int calibration_helper;
+
+command_manager temp_commander;
 
 
 // Variables used to implement dragging
@@ -48,10 +58,77 @@ std::vector<vent> vents;
 
 
 
+
+void handleSerialInput (std::vector<zone> & zones, std::vector<vent> & vents) {
+
+    String param1 = "address:";
+    String param2 = "batState:";
+    String param3 = "temp:";
+
+    Serial.print("Message received: ");
+    Serial.println(serial_buffer);
+    String serial_string = String(serial_buffer);
+
+    int address = serial_string.substring(serial_string.indexOf(param1) + param1.length(), serial_string.indexOf(param2) - 1).toInt();
+    boolean batState = boolean(serial_string.substring(serial_string.indexOf(param2) + param2.length(), serial_string.indexOf(param3) - 1).toInt());
+    int temp_val = serial_string.substring(serial_string.indexOf(param3) + param3.length(), serial_string.indexOf("}")).toInt();
+
+
+    // Update information about the specific zone or vent, or add new zone/vent if not found
+    if (temp_val == 0) {
+        // Message was from a vent
+        boolean device_found = false;
+
+        for (auto it = vents.begin(); it != vents.end(); ++it) {
+            if ((*it).address == address) {
+                (*it).batState = batState;
+                device_found = true;
+                break;
+            }
+        }
+
+        if (!device_found) {
+            // New vent, add it to the vents vector
+            vent new_vent = {address, batState};
+            vents.push_back(new_vent);
+        }
+    }
+    else {
+        // Message was from a router
+        boolean device_found = false;
+
+        for (auto it = zones.begin(); it != zones.end(); ++it) {
+            if ((*it).address == address) {
+                (*it).temp = temp_val;
+                (*it).batState = batState;
+                device_found = true;
+                temp_commander.update_zone((*it));
+                break;
+            }
+        }
+
+        if (!device_found) {
+            // New router, add it to the zones vector
+            zone new_zone = {ATMEGA, temp_val, 0, 0, 1, "New Zone", address, 0, batState};
+            new_zone.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+            new_zone.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+            zones.push_back(new_zone);
+            // Add it to temp_commander
+            temp_commander.add_zone(new_zone);
+        }
+    }
+
+
+}
+
+
+
+
 void setup()
 {
 
     Serial.begin(9600);
+    Serial1.begin(9600);
     // EEPROM.write(10, 0); // Calibrate screen
     delay(2000);
 
@@ -67,6 +144,7 @@ void setup()
     user_settings.time_zone = -4.0;
     // Configure temperature reading pin
     pinMode(A0, INPUT);
+    pinMode(D0, OUTPUT);
     main_hub_temp_timer.setToZero();
     Time.zone(user_settings.time_zone);
     networks_found = WiFi.scan(aps, 5);
@@ -81,30 +159,36 @@ void setup()
 
 
     // Fake data
-
-    vent vent1 = {011, true};
-    vent vent2 = {012, true};
-    vent vent3 = {021, false};
-    vent vent4 = {031, true};
-
+    // TODO: temp needs to be the first zone every time (main hub with address 01)
+    // remove the rest of the fake data
     zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 01, 0, true};
     zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 02, 0, true};
     zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 03, 0, true};
-    temp.set_desired_min_temp(62, user_settings.temp_mode);
-    temp.set_desired_max_temp(80, user_settings.temp_mode);
-    temp1.set_desired_min_temp(63, user_settings.temp_mode);
-    temp1.set_desired_max_temp(81, user_settings.temp_mode);
-    temp2.set_desired_min_temp(60, user_settings.temp_mode);
-    temp2.set_desired_max_temp(79, user_settings.temp_mode);
+    temp.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+    temp.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+    temp1.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+    temp1.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+    temp2.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+    temp2.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
 
     zones.push_back(temp);
     zones.push_back(temp1);
     zones.push_back(temp2);
 
+    // TODO: fix problem with duplicate addresses for multiple vents associated with main hub
+    vent vent1 = {011, true};
+    vent vent2 = {021, true};
+    vent vent3 = {012, false};
+    vent vent4 = {013, true};
+    vent vent5 = {023, false};
+
     vents.push_back(vent1);
     vents.push_back(vent2);
     vents.push_back(vent3);
     vents.push_back(vent4);
+    vents.push_back(vent5);
+
+    temp_commander.init(zones);
 
 
     for (auto i : zones) {
@@ -127,11 +211,44 @@ void setup()
 void loop()
 {
 
+
+    // Handle receiving a message from ATMEGA
+    while (Serial1.available()) {
+        if (serial_buffer_offset < (SERIAL_BUFFER_SIZE - 1)) {
+            char c = Serial1.read();
+            if (c != '\n') {
+                //Add character to buffer
+                serial_buffer[serial_buffer_offset++] = c;
+                //Ensure the last character is always '\0'
+                serial_buffer[serial_buffer_offset] = '\0';
+            }
+            else {
+                //End of line character found
+                handleSerialInput(zones, vents);
+                serial_buffer_offset = 0;
+                serial_buffer[serial_buffer_offset] = '\0';
+            }
+        }
+    }
+
+
+
+    // Get reference to the selected zone
     auto it = zones.begin();
 
     if (main_hub_temp_timer.check()) {
         (*it).temp = analogRead(A0);
+        temp_commander.update_zone((*it));
         main_hub_temp_timer.reset();
+    }
+
+    // Send temperature commands to zones
+    temp_commander.execute();
+    if (temp_commander.heat_on) {
+        digitalWrite(D0, HIGH);
+    }
+    else {
+        digitalWrite(D0, LOW);
     }
 
     // Reference to selected zone object
@@ -143,6 +260,11 @@ void loop()
 
 
 
+
+
+
+
+    // Handle touch inputs
     GD.get_inputs();
     tag = GD.inputs.tag;
 
@@ -203,6 +325,14 @@ void loop()
     }
 
 
+
+
+
+
+
+
+
+    // Handle screen touch
     if (tag != previousTouch) {
         if (screen == MAIN) {
             if (previousTouch == 1) {
@@ -304,6 +434,12 @@ void loop()
     }
 
 
+
+
+
+
+
+
     // Handle screen changes
     if ((screen != previousScreen) || (settings_screen != previous_settings_screen)) {
         if ((screen == SETTINGS) && (settings_screen == CALIBRATION)) {
@@ -317,17 +453,21 @@ void loop()
 
     }
 
-
-
-
-
-
-
     previous_settings_screen = settings_screen;
     previousScreen = screen;
     previousTouch = tag;
 
 
+
+
+
+
+
+
+
+
+
+    // Draw the screen
     if ((((tag != 0 && tag != 255) || touch_drag == true) && millis() - timeSinceLCDUpdate > 100) || (millis() - timeSinceLCDUpdate > 100)) {
 
         GD.VertexFormat(0); // Need this command here or else every pixel is rendered too small
@@ -744,18 +884,29 @@ void loop()
                 GD.ColorRGB(0xffffff);
                 GD.cmd_text((SW/4 + SW)/2, 40+80, 30, OPT_CENTER, (*it).zone_name);
 
-                GD.Begin(POINTS);
-                GD.PointSize(26*16);
-                GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
-                GD.PointSize(22*16);
-                GD.ColorRGB(0x222222);
-                GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
-                if ((*it).batState) {
-                    drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0x00923f);
+                int coord_offset;
+                if ((*it).address == 01) {
+                    // Coordinator, no need to draw router
+                    coord_offset = 90;
                 }
                 else {
-                    drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0xeb3332);
+                    coord_offset = 0;
+                    // Draw router battery status
+                    GD.Begin(POINTS);
+                    GD.PointSize(26*16);
+                    GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
+                    GD.PointSize(22*16);
+                    GD.ColorRGB(0x222222);
+                    GD.Vertex2f((SW/4 + SW)/2, 80+40+30+60+45);
+                    if ((*it).batState) {
+                        drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0x00923f);
+                    }
+                    else {
+                        drawBattery((SW/4 + SW)/2 - 18/2, 80+40+30+60-22, 18, 30, 0xeb3332);
+                    }
                 }
+
+
 
 
 
@@ -774,12 +925,12 @@ void loop()
                 auto vents_it = vents_in_zone.begin();
 
                 for (int i = 0; i < num_of_vents_in_zone; i++) {
-                    drawVent((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2-50, SH/2+40+40-30+80, 100, 60, 0xffffff);
+                    drawVent((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2-50, SH/2+40+40-30+80-coord_offset, 100, 60, 0xffffff);
                     if ((*vents_it).batState) {
-                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80, 18, 30, 0x00923f);
+                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80-coord_offset, 18, 30, 0x00923f);
                     }
                     else {
-                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80, 18, 30, 0xeb3332);
+                        drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80-coord_offset, 18, 30, 0xeb3332);
                     }
 
 
