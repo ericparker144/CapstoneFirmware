@@ -284,7 +284,7 @@ public:
     // std::queue<zone_command_metadata> zones_to_service; // Zones that will
 
     void init(std::vector<zone> zones) {
-        command_delay.setValue(1000);
+        command_delay.setValue(30000);
         command_delay.setToZero();
         num_of_zones = zones.size();
         for (auto it = zones.begin(); it != zones.end(); ++it) {

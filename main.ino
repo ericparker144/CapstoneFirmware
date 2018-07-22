@@ -7,7 +7,7 @@
 #define SW 800 // Screen Width
 #define SH 480 // Screen Height
 #define TEMPERATURE_READ_INTERVAL 10000
-#define SERIAL_BUFFER_SIZE 50
+#define SERIAL_BUFFER_SIZE 100
 #define DEFAULT_MIN_TEMP_FAHR 68
 #define DEFAULT_MAX_TEMP_FAHR 74
 #define DEFAULT_MIN_TEMP_CELS 20
@@ -59,7 +59,7 @@ std::vector<vent> vents;
 
 
 
-void handleSerialInput (std::vector<zone> & zones, std::vector<vent> & vents) {
+void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
     String param1 = "address:";
     String param2 = "batState:";
@@ -127,8 +127,8 @@ void handleSerialInput (std::vector<zone> & zones, std::vector<vent> & vents) {
 void setup()
 {
 
-    Serial.begin(9600);
-    Serial1.begin(9600);
+    Serial.begin(115200);
+    Serial1.begin(115200);
     // EEPROM.write(10, 0); // Calibrate screen
     delay(2000);
 
@@ -139,8 +139,8 @@ void setup()
 
     // EEPROM.get(EEPROM_START, user_settings);
     user_settings.temp_mode = TEMP_MODE_FAHR;
-    user_settings.num_of_zones = 3;
-    user_settings.num_of_vents = 4;
+    user_settings.num_of_zones = 1;
+    user_settings.num_of_vents = 0;
     user_settings.time_zone = -4.0;
     // Configure temperature reading pin
     pinMode(A0, INPUT);
@@ -162,42 +162,42 @@ void setup()
     // TODO: temp needs to be the first zone every time (main hub with address 01)
     // remove the rest of the fake data
     zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 01, 0, true};
-    zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 02, 0, true};
-    zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 03, 0, true};
+    // zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 02, 0, true};
+    // zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 03, 0, true};
     temp.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
     temp.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
-    temp1.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
-    temp1.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
-    temp2.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
-    temp2.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+    // temp1.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+    // temp1.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+    // temp2.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
+    // temp2.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
 
     zones.push_back(temp);
-    zones.push_back(temp1);
-    zones.push_back(temp2);
+    // zones.push_back(temp1);
+    // zones.push_back(temp2);
 
     // TODO: fix problem with duplicate addresses for multiple vents associated with main hub
-    vent vent1 = {011, true};
-    vent vent2 = {021, true};
-    vent vent3 = {012, false};
-    vent vent4 = {013, true};
-    vent vent5 = {023, false};
-
-    vents.push_back(vent1);
-    vents.push_back(vent2);
-    vents.push_back(vent3);
-    vents.push_back(vent4);
-    vents.push_back(vent5);
+    // vent vent1 = {011, true};
+    // vent vent2 = {021, true};
+    // vent vent3 = {012, false};
+    // vent vent4 = {013, true};
+    // vent vent5 = {023, false};
+    //
+    // vents.push_back(vent1);
+    // vents.push_back(vent2);
+    // vents.push_back(vent3);
+    // vents.push_back(vent4);
+    // vents.push_back(vent5);
 
     temp_commander.init(zones);
 
 
-    for (auto i : zones) {
-        Serial.println(i.temp);
-        Serial.println(i.min_temp);
-        Serial.println(i.max_temp);
-        Serial.println(i.zone_name);
-        Serial.println(i.address);
-    }
+    // for (auto i : zones) {
+    //     Serial.println(i.temp);
+    //     Serial.println(i.min_temp);
+    //     Serial.println(i.max_temp);
+    //     Serial.println(i.zone_name);
+    //     Serial.println(i.address);
+    // }
 
 
 
@@ -210,6 +210,8 @@ void setup()
 
 void loop()
 {
+
+    user_settings.num_of_zones = zones.size();
 
 
     // Handle receiving a message from ATMEGA
