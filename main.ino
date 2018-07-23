@@ -3,7 +3,7 @@
 #include "DATA.h"
 #include <vector>
 
-
+#define VERSION_NUMBER 2
 #define SW 800 // Screen Width
 #define SH 480 // Screen Height
 #define TEMPERATURE_READ_INTERVAL 10000
@@ -16,7 +16,7 @@
 char serial_buffer[SERIAL_BUFFER_SIZE] = {'\0'};
 size_t serial_buffer_offset = 0;
 
-custom_settings user_settings = {TEMP_MODE_FAHR, 0, 0, 0.0};
+custom_settings user_settings;
 char previousTouch;
 char tag;
 unsigned long timeSinceLCDUpdate = 0;
@@ -89,8 +89,12 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
         if (!device_found) {
             // New vent, add it to the vents vector
+            user_settings.num_of_vents += 1;
             vent new_vent = {address, batState};
             vents.push_back(new_vent);
+            // Save the new vent to EEPROM
+            new_vent.save_back(user_settings.num_of_vents);
+            user_settings.save();
         }
     }
     else {
@@ -109,12 +113,16 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
         if (!device_found) {
             // New router, add it to the zones vector
+            user_settings.num_of_zones += 1;
             zone new_zone = {ATMEGA, temp_val, 0, 0, 1, "New Zone", address, 0, batState};
-            new_zone.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
-            new_zone.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
+            new_zone.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode, selected_zone);
+            new_zone.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode, selected_zone);
             zones.push_back(new_zone);
             // Add it to temp_commander
             temp_commander.add_zone(new_zone);
+            // Save the new zone to EEPROM
+            new_zone.save(user_settings.num_of_zones);
+            user_settings.save();
         }
     }
 
@@ -137,11 +145,56 @@ void setup()
     GD.cmd_setrotate(0);
 
 
-    // EEPROM.get(EEPROM_START, user_settings);
-    user_settings.temp_mode = TEMP_MODE_FAHR;
-    user_settings.num_of_zones = 1;
-    user_settings.num_of_vents = 0;
-    user_settings.time_zone = -4.0;
+
+
+    EEPROM.get(EEPROM_START, user_settings);
+
+    // Force reset:
+    // EEPROM.write(EEPROM_START, 0x00);
+
+    if (user_settings.version_number != VERSION_NUMBER) {
+        // Clear EEPROM and load default settings
+        Serial.println("New version detected. Resetting to factory defaults.");
+        for (int i = EEPROM_START; i < EEPROM.length(); i++) {
+            EEPROM.write(i, 0x00);
+        }
+        user_settings.version_number = VERSION_NUMBER;
+        user_settings.temp_mode = TEMP_MODE_FAHR;
+        user_settings.num_of_zones = 1;
+        user_settings.num_of_vents = 0;
+        user_settings.time_zone = -4.0;
+        zone default_main_hub = {PHOTON, 905, 0, 0, 1, "Main Thermostat", 01, 0, true};
+        default_main_hub.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode, selected_zone);
+        default_main_hub.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode, selected_zone);
+        zones.push_back(default_main_hub);
+        user_settings.save();
+        default_main_hub.save(selected_zone);
+    }
+    else {
+        // Load the stored user settings
+        EEPROM.get(EEPROM_START, user_settings);
+        // Load the stored zones/vents
+        for (int i = 0; i < user_settings.num_of_zones; i++) {
+            zone temp;
+            EEPROM.get(EEPROM_ZONES_START + i*sizeof(zone), temp);
+            zones.push_back(temp);
+        }
+        for (int i = 0; i < user_settings.num_of_vents; i++) {
+            vent temp;
+            EEPROM.get(EEPROM_VENTS_START + i*sizeof(vent), temp);
+            vents.push_back(temp);
+        }
+    }
+
+    Serial.println("EERPOM:");
+    for (int i = EEPROM_START; i < EEPROM.length(); i++) {
+        Serial.printf("%d: %d", i, EEPROM.read(i));
+        Serial.println();
+    }
+
+
+
+
     // Configure temperature reading pin
     pinMode(A0, INPUT);
     pinMode(D0, OUTPUT);
@@ -154,6 +207,10 @@ void setup()
     else {
         calibration_helper = 22;
     }
+
+
+
+
     // WiFi.clearCredentials();
     // WiFi.setCredentials("Eric's Phone", "erociscool", WLAN_SEC_WPA2);
 
@@ -161,17 +218,13 @@ void setup()
     // Fake data
     // TODO: temp needs to be the first zone every time (main hub with address 01)
     // remove the rest of the fake data
-    zone temp = {PHOTON, 905, 0, 0, 1, "Living Room", 01, 0, true};
     // zone temp1 = {ATMEGA, 905, 0, 0, 1, "Basement", 02, 0, true};
     // zone temp2 = {ATMEGA, 915, 0, 0, 1, "Bedroom", 03, 0, true};
-    temp.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
-    temp.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
     // temp1.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
     // temp1.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
     // temp2.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode);
     // temp2.set_desired_max_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MAX_TEMP_FAHR : DEFAULT_MAX_TEMP_CELS), user_settings.temp_mode);
 
-    zones.push_back(temp);
     // zones.push_back(temp1);
     // zones.push_back(temp2);
 
@@ -188,7 +241,6 @@ void setup()
     // vents.push_back(vent4);
     // vents.push_back(vent5);
 
-    temp_commander.init(zones);
 
 
     // for (auto i : zones) {
@@ -202,6 +254,8 @@ void setup()
 
 
 
+    // Initialize the temperature appropriately for the zones
+    temp_commander.init(zones);
 
     Serial.println("SETUP COMPLETE.");
 
@@ -210,8 +264,6 @@ void setup()
 
 void loop()
 {
-
-    user_settings.num_of_zones = zones.size();
 
 
     // Handle receiving a message from ATMEGA
@@ -338,7 +390,7 @@ void loop()
     if (tag != previousTouch) {
         if (screen == MAIN) {
             if (previousTouch == 1) {
-                networks_found = WiFi.scan(aps, 5);
+                // networks_found = WiFi.scan(aps, 5);
                 screen = SETTINGS;
             }
             else if ((previousTouch == 2) || (previousTouch == 3)) {
@@ -362,21 +414,21 @@ void loop()
             else if (previousTouch == 3) {
                 // attempting to decrement upper limit
                 if ((temp_selector == 2) && (((*it).max_temp - one_degree - (*it).min_temp) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).max_temp - one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp - one_degree) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).max_temp -= one_degree;
+                    (*it).set_desired_max_temp_adc((*it).max_temp - one_degree, selected_zone);
                 }
                 // attempting to decrement lower limit
                 else if ((temp_selector == 3) && (((*it).min_temp - one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp - one_degree) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).min_temp -= one_degree;
+                    (*it).set_desired_min_temp_adc((*it).min_temp - one_degree, selected_zone);
                 }
             }
             else if (previousTouch == 4) {
                 // attempting to increment upper limit
                 if ((temp_selector == 2) && (((*it).max_temp + one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).max_temp + one_degree) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).max_temp += one_degree;
+                    (*it).set_desired_max_temp_adc((*it).max_temp + one_degree, selected_zone);
                 }
                 // attempting to increment lower limit
                 else if ((temp_selector == 3) && (((*it).max_temp - ((*it).min_temp + one_degree)) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).min_temp + one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp + one_degree) >= MIN_ALLOWABLE_TEMP)) {
-                    (*it).min_temp += one_degree;
+                    (*it).set_desired_min_temp_adc((*it).min_temp + one_degree, selected_zone);
                 }
             }
         }
@@ -407,7 +459,7 @@ void loop()
                 settings_screen = CALIBRATION;
             }
             else if (previousTouch == calibrate_btn.tag) {
-                (*it).calibrate(calibration_helper, (*it).temp, user_settings.temp_mode);
+                (*it).calibrate(calibration_helper, (*it).temp, user_settings.temp_mode, selected_zone);
             }
             else if (previousTouch == 13) {
                 calibration_helper--;
@@ -580,7 +632,7 @@ void loop()
             drawRect(SW/2-125,SH*3/4-20,250,40, 0xffffff);
             drawRect(SW/2-125+2,SH*3/4-20+2,250-4,40-4, 0x000000);
             GD.ColorRGB(0xffffff);
-            GD.cmd_text(SW/2, SH*3/4, 29, OPT_CENTER, "Done");
+            GD.cmd_text(SW/2, SH*3/4, 29, OPT_CENTER, "Back");
             GD.LineWidth(1*16);
 
 

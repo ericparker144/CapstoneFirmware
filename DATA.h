@@ -1,4 +1,6 @@
 #define EEPROM_START 40 // Starting usable address of EEPROM
+#define EEPROM_ZONES_START 100
+#define EEPROM_VENTS_START 1074
 #define PHOTON_ADC_MAX_RES 4095.0
 #define PHOTON_ADC_MAX_VOLTAGE 3.3
 #define ATMEGA_ADC_MAX_RES 1023.0
@@ -31,10 +33,16 @@
 
 struct custom_settings {
 
+
+    uint8_t version_number;
     int temp_mode; // TEMP_MODE_CELS or TEMP_MODE_FAHR
     int num_of_zones;
     int num_of_vents;
     float time_zone;
+
+    void save() {
+        EEPROM.put(EEPROM_START, (*this));
+    }
 
 };
 
@@ -49,6 +57,10 @@ struct vent {
 
     int zone_number() {
         return address % 8;
+    }
+
+    void save_back(int num_of_vents) {
+        EEPROM.put(EEPROM_VENTS_START + (num_of_vents - 1)*sizeof(vent), (*this));
     }
 
     // int vent_number() {
@@ -95,7 +107,6 @@ struct zone {
     // int max_temp_fahr; // desired maximum temperature - fahrenheit
     // int max_temp_cels; // desired maximum temperature - celsius
 
-
 public:
     int device_type; // PHOTON or ATMEGA
     int temp; // temperature reading - raw ADC
@@ -106,6 +117,11 @@ public:
     uint32_t address; // Address
     uint32_t calibration_factor;
     boolean batState;
+
+
+    void save(int selected_zone) {
+        EEPROM.put(EEPROM_ZONES_START + (selected_zone - 1)*sizeof(zone), (*this));
+    }
 
 
     int get_calibrated_temp(int temp_mode) {
@@ -139,13 +155,14 @@ public:
         }
     }
 
-    void calibrate(int _temp, int current_adc_value, int temp_mode) {
+    void calibrate(int _temp, int current_adc_value, int temp_mode, int selected_zone) {
         if (temp_mode == TEMP_MODE_FAHR) {
             calibration_factor = current_adc_value - conv_fahr_to_adc(_temp);
         }
         else {
             calibration_factor = current_adc_value - conv_cels_to_adc(_temp);
         }
+        save(selected_zone);
     }
 
 
@@ -188,24 +205,44 @@ public:
         }
     }
 
-    void set_desired_min_temp(int _temp, int temp_mode) {
+    void set_desired_min_temp(int _temp, int temp_mode, int selected_zone) {
+        // TODO: Update EEPROM
         if (temp_mode == TEMP_MODE_FAHR) {
             min_temp = conv_fahr_to_adc(_temp);
         }
         else {
             min_temp = conv_cels_to_adc(_temp);
-
         }
+
+        save(selected_zone);
+
     }
 
-    void set_desired_max_temp(int _temp, int temp_mode) {
+    void set_desired_max_temp(int _temp, int temp_mode, int selected_zone) {
+        // TODO: Update EEPROM
         if (temp_mode == TEMP_MODE_FAHR) {
             max_temp = conv_fahr_to_adc(_temp);
         }
         else {
             max_temp = conv_cels_to_adc(_temp);
-
         }
+
+        save(selected_zone);
+
+    }
+
+    void set_desired_min_temp_adc(int _temp_adc, int selected_zone) {
+
+        min_temp = _temp_adc;
+        save(selected_zone);
+
+    }
+
+    void set_desired_max_temp_adc(int _temp_adc, int selected_zone) {
+
+        max_temp = _temp_adc;
+        save(selected_zone);
+
     }
 
 };
