@@ -301,7 +301,7 @@ class zone_command_metadata {
 
 public:
     uint32_t address;
-    int temp_indicator; // 0 if within temp range, 1 if below min_temp, 2 if above max_temp
+    int temp_indicator; // 0 if within temp range, 1 if below min_temp, 2 if above max_temp, 3 if currently in heating process
     int out_of_range_count;
 };
 
@@ -345,6 +345,13 @@ public:
             }
         }
 
+        Serial.printf("Zone: %d, Temp: %d, MinTemp: %d, MaxTemp:%d, TempInd: %d, OutRangeCnt: %d", _zone.address, _zone.get_calibrated_temp_adc(), _zone.min_temp, _zone.max_temp, (*it).temp_indicator, (*it).out_of_range_count);
+        Serial.println();
+
+
+
+
+
         if (_zone.get_calibrated_temp_adc() < _zone.min_temp) {
             switch ((*it).temp_indicator) {
                 case 0:
@@ -365,6 +372,7 @@ public:
                     (*it).out_of_range_count = 1;
                     break;
                 case 1:
+                case 3:
                     (*it).out_of_range_count = 1;
                     break;
                 case 2:
@@ -384,10 +392,10 @@ public:
     void execute() {
         if (command_delay.check()) {
 
-            Serial.printf("# of zones: %d", num_of_zones);
-            Serial.println();
-            Serial.printf("Current Zone: %d", current_zone);
-            Serial.println();
+            // Serial.printf("# of zones: %d", num_of_zones);
+            // Serial.println();
+            // Serial.printf("Current Zone: %d", current_zone);
+            // Serial.println();
 
             auto it = zones_to_control.begin();
             for (int i = 1; i < current_zone; i++) {
@@ -396,12 +404,14 @@ public:
 
             int degrees;
 
-            Serial.printf("Temp indicator: %d", (*it).temp_indicator);
-            Serial.println();
+            // Serial.printf("Temp indicator: %d", (*it).temp_indicator);
+            // Serial.println();
 
             switch ((*it).temp_indicator) {
                 case 1:
                     degrees = DEGREES_FULLY_OPEN;
+                    // Indicate that the zone needs to be heated to max_temp
+                    (*it).temp_indicator = 3;
                     heat_on = true;
                     break;
                 case 0:
@@ -417,10 +427,10 @@ public:
                     break;
             }
 
-            Serial.printf("{address:%d,degrees:%d}", (*it).address, degrees);
-            Serial.println();
-            Serial1.printf("{address:%d,degrees:%d}", (*it).address, degrees);
-            Serial.println();
+            // Serial.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+            // Serial.println();
+            // Serial1.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+            // Serial.println();
 
 
             if (current_zone == num_of_zones) {

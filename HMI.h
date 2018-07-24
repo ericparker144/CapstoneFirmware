@@ -1,7 +1,7 @@
 #define SHADOW 3
 #define RADIUS 5
 
-enum pages {MAIN, SETTINGS, TEMP_ADJUST};
+enum pages {MAIN, SETTINGS, TEMP_ADJUST, EDIT_ZONE_NAME};
 enum settings_pages {WIFI, CALIBRATION, NETWORK};
 
 void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t colour)
@@ -185,6 +185,7 @@ class keyboard {
     keyboard_key keyboard_b;
     keyboard_key keyboard_n;
     keyboard_key keyboard_m;
+    button keyboard_space;
 
     keyboard(int16_t x_start, int16_t y_start, int16_t key_space, int16_t key_dimension, uint32_t key_col, int16_t key_fnt) {
 
@@ -217,6 +218,7 @@ class keyboard {
       keyboard_O = keyboard_key{'O',keyboard_start_x+8*(keydim+key_spacing),keyboard_start_y+(keydim+key_spacing),keydim,keydim,key_font,key_colour,"O"};
       keyboard_P = keyboard_key{'P',keyboard_start_x+9*(keydim+key_spacing),keyboard_start_y+(keydim+key_spacing),keydim,keydim,key_font,key_colour,"P"};
 
+      keyboard_shift_lock = button{15,keyboard_start_x+0*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"Sh"};
       keyboard_A = keyboard_key{'A',keyboard_start_x+1*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"A"};
       keyboard_S = keyboard_key{'S',keyboard_start_x+2*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"S"};
       keyboard_D = keyboard_key{'D',keyboard_start_x+3*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"D"};
@@ -227,11 +229,11 @@ class keyboard {
       keyboard_K = keyboard_key{'K',keyboard_start_x+8*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"K"};
       keyboard_L = keyboard_key{'L',keyboard_start_x+9*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"L"};
 
-      keyboard_shift_lock = button{15,keyboard_start_x,keyboard_start_y+3*(keydim+key_spacing),2*keydim+key_spacing,keydim,key_font,key_colour,"Sh"};
-      keyboard_Z = keyboard_key{'Z',keyboard_start_x+2*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"Z"};
-      keyboard_X = keyboard_key{'X',keyboard_start_x+3*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"X"};
-      keyboard_C = keyboard_key{'C',keyboard_start_x+4*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"C"};
-      keyboard_V = keyboard_key{'V',keyboard_start_x+5*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"V"};
+      keyboard_Z = keyboard_key{'Z',keyboard_start_x+0*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"Z"};
+      keyboard_X = keyboard_key{'X',keyboard_start_x+1*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"X"};
+      keyboard_C = keyboard_key{'C',keyboard_start_x+2*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"C"};
+      keyboard_V = keyboard_key{'V',keyboard_start_x+3*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"V"};
+      keyboard_space = button{' ',keyboard_start_x+4*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),2*keydim+key_spacing,keydim,key_font,key_colour,"|__|"};
       keyboard_B = keyboard_key{'B',keyboard_start_x+6*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"B"};
       keyboard_N = keyboard_key{'N',keyboard_start_x+7*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"N"};
       keyboard_M = keyboard_key{'M',keyboard_start_x+8*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"M"};
@@ -271,14 +273,182 @@ class keyboard {
       keyboard_k = keyboard_key{'k',keyboard_start_x+8*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"k"};
       keyboard_l = keyboard_key{'l',keyboard_start_x+9*(keydim+key_spacing),keyboard_start_y+2*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"l"};
 
-      keyboard_z = keyboard_key{'z',keyboard_start_x+2*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"z"};
-      keyboard_x = keyboard_key{'x',keyboard_start_x+3*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"x"};
-      keyboard_c = keyboard_key{'c',keyboard_start_x+4*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"c"};
-      keyboard_v = keyboard_key{'v',keyboard_start_x+5*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"v"};
+      keyboard_z = keyboard_key{'z',keyboard_start_x+0*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"z"};
+      keyboard_x = keyboard_key{'x',keyboard_start_x+1*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"x"};
+      keyboard_c = keyboard_key{'c',keyboard_start_x+2*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"c"};
+      keyboard_v = keyboard_key{'v',keyboard_start_x+3*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"v"};
       keyboard_b = keyboard_key{'b',keyboard_start_x+6*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"b"};
       keyboard_n = keyboard_key{'n',keyboard_start_x+7*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"n"};
       keyboard_m = keyboard_key{'m',keyboard_start_x+8*(keydim+key_spacing),keyboard_start_y+3*(keydim+key_spacing),keydim,keydim,key_font,key_colour,"m"};
     }
+
+    void change_keyboard_position(int x, int y) {
+        keyboard_start_x = x;
+        keyboard_start_y = y;
+        // Update x
+
+      keyboard_1.x = keyboard_start_x;
+      keyboard_2.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_3.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_4.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_5.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_6.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_7.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_8.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_9.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_0.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_Q.x = keyboard_start_x;
+      keyboard_W.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_E.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_R.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_T.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_Y.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_U.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_I.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_O.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_P.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_A.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_S.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_D.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_F.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_G.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_H.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_J.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_K.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_L.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_shift_lock.x = keyboard_start_x;
+      keyboard_Z.x = keyboard_start_x+0*(keydim+key_spacing);
+      keyboard_X.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_C.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_V.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_B.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_N.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_M.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_BS.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_sh1.x = keyboard_start_x;
+      keyboard_sh2.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_sh3.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_sh4.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_sh5.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_sh6.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_sh7.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_sh8.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_sh9.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_sh0.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_q.x = keyboard_start_x;
+      keyboard_w.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_e.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_r.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_t.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_y.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_u.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_i.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_o.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_p.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_a.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_s.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_d.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_f.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_g.x = keyboard_start_x+5*(keydim+key_spacing);
+      keyboard_h.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_j.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_k.x = keyboard_start_x+8*(keydim+key_spacing);
+      keyboard_l.x = keyboard_start_x+9*(keydim+key_spacing);
+      keyboard_z.x = keyboard_start_x+0*(keydim+key_spacing);
+      keyboard_x.x = keyboard_start_x+1*(keydim+key_spacing);
+      keyboard_c.x = keyboard_start_x+2*(keydim+key_spacing);
+      keyboard_v.x = keyboard_start_x+3*(keydim+key_spacing);
+      keyboard_space.x = keyboard_start_x+4*(keydim+key_spacing);
+      keyboard_b.x = keyboard_start_x+6*(keydim+key_spacing);
+      keyboard_n.x = keyboard_start_x+7*(keydim+key_spacing);
+      keyboard_m.x = keyboard_start_x+8*(keydim+key_spacing);
+
+      // Update y
+
+      keyboard_1.y = keyboard_start_y;
+      keyboard_2.y = keyboard_start_y;
+      keyboard_3.y = keyboard_start_y;
+      keyboard_4.y = keyboard_start_y;
+      keyboard_5.y = keyboard_start_y;
+      keyboard_6.y = keyboard_start_y;
+      keyboard_7.y = keyboard_start_y;
+      keyboard_8.y = keyboard_start_y;
+      keyboard_9.y = keyboard_start_y;
+      keyboard_0.y = keyboard_start_y;
+      keyboard_Q.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_W.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_E.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_R.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_T.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_Y.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_U.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_I.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_O.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_P.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_A.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_S.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_D.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_F.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_G.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_H.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_J.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_K.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_L.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_shift_lock.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_Z.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_X.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_C.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_V.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_B.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_N.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_M.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_BS.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_sh1.y = keyboard_start_y;
+      keyboard_sh2.y = keyboard_start_y;
+      keyboard_sh3.y = keyboard_start_y;
+      keyboard_sh4.y = keyboard_start_y;
+      keyboard_sh5.y = keyboard_start_y;
+      keyboard_sh6.y = keyboard_start_y;
+      keyboard_sh7.y = keyboard_start_y;
+      keyboard_sh8.y = keyboard_start_y;
+      keyboard_sh9.y = keyboard_start_y;
+      keyboard_sh0.y = keyboard_start_y;
+      keyboard_q.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_w.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_e.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_r.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_t.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_y.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_u.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_i.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_o.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_p.y = keyboard_start_y+(keydim+key_spacing);
+      keyboard_a.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_s.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_d.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_f.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_g.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_h.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_j.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_k.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_l.y = keyboard_start_y+2*(keydim+key_spacing);
+      keyboard_z.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_x.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_c.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_v.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_b.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_n.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_m.y = keyboard_start_y+3*(keydim+key_spacing);
+      keyboard_space.y = keyboard_start_y+3*(keydim+key_spacing);
+
+    }
+
+
+
+
+
+
+
 
     void draw(char _tag) {
       if (shift) {
@@ -366,6 +536,7 @@ class keyboard {
 
       keyboard_shift_lock.draw(_tag);
       keyboard_BS.draw(_tag);
+      keyboard_space.draw(_tag);
     }
 
     void shift_press() {

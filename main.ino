@@ -13,6 +13,11 @@
 #define DEFAULT_MIN_TEMP_CELS 20
 #define DEFAULT_MAX_TEMP_CELS 24
 
+SYSTEM_THREAD(ENABLED);
+
+boolean screen_SPI_active = false;
+uint32_t time_since_lcd_check_in = 0;
+
 char serial_buffer[SERIAL_BUFFER_SIZE] = {'\0'};
 size_t serial_buffer_offset = 0;
 
@@ -25,6 +30,7 @@ WiFiAccessPoint aps[5];
 int wifi_network_selected = 0;
 char wifi_password[25] = {'\0'};
 int calibration_helper;
+char zone_name_helper[20] = {'\0'};
 
 command_manager temp_commander;
 
@@ -49,6 +55,8 @@ button wifi_scan = {3, SW-10-70, 80+40+30+60-15, 70, 30, 28, 0x215968, "Scan"};
 button wifi_connect = {9, (SW/4+SW)/2-5-100, 80+40+40+40-5, 100, 60, 28, 0x215968, "Connect"};
 button wifi_cancel = {10, (SW/4+SW)/2+5, 80+40+40+40-5, 100, 60, 28, 0x215968, "Cancel"};
 button calibrate_btn = {12, (SW/4 + SW)/2-125,SH/2+40+40+80-20,250,40, 29, 0x215968, "Done"};
+button new_name_save = {1, SW/2-150-5, 80+40+40+40-5-20, 150, 60, 28, 0x215968, "Save"};
+button new_name_cancel = {2, SW/2+5, 80+40+40+40-5-20, 150, 60, 28, 0x215968, "Cancel"};
 
 timer main_hub_temp_timer(TEMPERATURE_READ_INTERVAL);
 int selected_zone = 1;
@@ -141,6 +149,7 @@ void setup()
     delay(2000);
 
     GD.begin();
+    screen_SPI_active = true;
     // GD.cmd_calibrate();
     GD.cmd_setrotate(0);
 
@@ -266,6 +275,9 @@ void loop()
 {
 
 
+
+
+
     // Handle receiving a message from ATMEGA
     while (Serial1.available()) {
         if (serial_buffer_offset < (SERIAL_BUFFER_SIZE - 1)) {
@@ -283,6 +295,60 @@ void loop()
                 serial_buffer[serial_buffer_offset] = '\0';
             }
         }
+    }
+
+
+    if (millis() - time_since_lcd_check_in > 1000)
+    {
+        Serial.println("loop");
+
+        if (GD.rd(0xC0001) != 0x13 && screen_SPI_active)
+        {
+            screen_SPI_active = false;
+            Serial.println("Screen SPI inactive");
+        }
+
+        if (!screen_SPI_active)
+        {
+            digitalWrite(D5, HIGH);
+
+            SPI1.begin(D5);
+            SPI1.setDataMode(SPI_MODE0);
+            SPI1.setClockDivider(SPI_CLOCK_DIV64);
+            SPI1.setBitOrder(MSBFIRST);
+
+            digitalWrite(D5, LOW);
+
+            SPI1.transfer(0x00);
+            SPI1.transfer(0x00);
+            SPI1.transfer(0x00);
+
+            digitalWrite(D5, HIGH);
+            delay(120);
+            digitalWrite(D5, LOW);
+
+            SPI.transfer(0x68);
+            SPI.transfer(0x00);
+            SPI.transfer(0x00);
+
+            digitalWrite(D5, HIGH);
+            delay(120);
+            digitalWrite(D5, LOW);
+
+            if (SPI.transfer(0x10) != 0xff)
+            {
+                digitalWrite(D5, HIGH);
+                GD.begin();
+                GD.cmd_setrotate(0);
+                GD.VertexFormat(0);
+                screen_SPI_active = true;
+
+            }
+            digitalWrite(D5, HIGH);
+            delay(200);
+        }
+
+        time_since_lcd_check_in = millis();
     }
 
 
@@ -305,6 +371,7 @@ void loop()
         digitalWrite(D0, LOW);
     }
 
+
     // Reference to selected zone object
     for (int i = 1; i < selected_zone; i++) {
         ++it;
@@ -316,66 +383,67 @@ void loop()
 
 
 
+    if (screen_SPI_active) {
 
+        // Handle touch inputs
+        GD.get_inputs();
+        tag = GD.inputs.tag;
 
-    // Handle touch inputs
-    GD.get_inputs();
-    tag = GD.inputs.tag;
-
-    if (touch_drag == false && GD.inputs.x != -32768) {
-        // Serial.println("drag started");
-        x_start = GD.inputs.x;
-        y_start = GD.inputs.y;
-        touch_drag = true;
-        x_drag = 0;
-        y_drag = 0;
-
-    }
-    else if (touch_drag == true && GD.inputs.x != -32768) {
-        x_drag = GD.inputs.x - x_start;
-        y_drag = GD.inputs.y - y_start;
-        // Serial.println(x_drag);
-    }
-    else if (touch_drag == true && GD.inputs.x == -32768) {
-        touch_drag = false;
-
-        // Serial.println("Drag Complete");
-
-
-        // Handle drag
-        if ((screen == MAIN) || ((screen == SETTINGS) && (settings_screen == CALIBRATION)) || ((screen == SETTINGS) && (settings_screen == NETWORK))) {
-
-            // Prevent swiping right if on the first zone, or left if on the last zone, or in either direction if only one zone
-            if (((selected_zone == 1) && (x_drag > 0)) || ((selected_zone == user_settings.num_of_zones) && (x_drag < 0)) || (user_settings.num_of_zones == 1)) {
-                x_drag = 0;
-            }
-            // Handle acceptable swipes on first and last zones
-            else if ((selected_zone == 1) && (x_drag < -120) && (user_settings.num_of_zones > 1)) {
-                selected_zone++;
-            }
-            else if ((selected_zone == user_settings.num_of_zones) && (x_drag > 120) && (user_settings.num_of_zones > 1)) {
-                selected_zone--;
-            }
-            // Allow swiping left and right if in middle zones
-            else if ((selected_zone > 1) && (selected_zone < user_settings.num_of_zones)) {
-                if (x_drag > 120) {
-                    selected_zone--;
-                }
-                else if (x_drag < -120) {
-                    selected_zone++;
-                }
-            }
+        if (touch_drag == false && GD.inputs.x != -32768) {
+            // Serial.println("drag started");
+            x_start = GD.inputs.x;
+            y_start = GD.inputs.y;
+            touch_drag = true;
+            x_drag = 0;
+            y_drag = 0;
 
         }
+        else if (touch_drag == true && GD.inputs.x != -32768) {
+            x_drag = GD.inputs.x - x_start;
+            y_drag = GD.inputs.y - y_start;
+            // Serial.println(x_drag);
+        }
+        else if (touch_drag == true && GD.inputs.x == -32768) {
+            touch_drag = false;
+
+            // Serial.println("Drag Complete");
+
+
+            // Handle drag
+            if ((screen == MAIN) || ((screen == SETTINGS) && (settings_screen == CALIBRATION)) || ((screen == SETTINGS) && (settings_screen == NETWORK))) {
+
+                // Prevent swiping right if on the first zone, or left if on the last zone, or in either direction if only one zone
+                if (((selected_zone == 1) && (x_drag > 0)) || ((selected_zone == user_settings.num_of_zones) && (x_drag < 0)) || (user_settings.num_of_zones == 1)) {
+                    x_drag = 0;
+                }
+                // Handle acceptable swipes on first and last zones
+                else if ((selected_zone == 1) && (x_drag < -120) && (user_settings.num_of_zones > 1)) {
+                    selected_zone++;
+                }
+                else if ((selected_zone == user_settings.num_of_zones) && (x_drag > 120) && (user_settings.num_of_zones > 1)) {
+                    selected_zone--;
+                }
+                // Allow swiping left and right if in middle zones
+                else if ((selected_zone > 1) && (selected_zone < user_settings.num_of_zones)) {
+                    if (x_drag > 120) {
+                        selected_zone--;
+                    }
+                    else if (x_drag < -120) {
+                        selected_zone++;
+                    }
+                }
+
+            }
 
 
 
-        x_drag = 0;
-        y_drag = 0;
-    }
-    else {
-        x_drag = 0;
-        y_drag = 0;
+            x_drag = 0;
+            y_drag = 0;
+        }
+        else {
+            x_drag = 0;
+            y_drag = 0;
+        }
     }
 
 
@@ -387,7 +455,7 @@ void loop()
 
 
     // Handle screen touch
-    if (tag != previousTouch) {
+    if ((tag != previousTouch) && (screen_SPI_active)) {
         if (screen == MAIN) {
             if (previousTouch == 1) {
                 // networks_found = WiFi.scan(aps, 5);
@@ -396,6 +464,9 @@ void loop()
             else if ((previousTouch == 2) || (previousTouch == 3)) {
                 temp_selector = previousTouch;
                 screen = TEMP_ADJUST;
+            }
+            else if (previousTouch == 4) {
+                screen = EDIT_ZONE_NAME;
             }
         }
         else if (screen == TEMP_ADJUST) {
@@ -429,6 +500,32 @@ void loop()
                 // attempting to increment lower limit
                 else if ((temp_selector == 3) && (((*it).max_temp - ((*it).min_temp + one_degree)) >= MAX_ALLOWABLE_TEMP_DIFFERENCE) && (((*it).min_temp + one_degree) <= MAX_ALLOWABLE_TEMP) && (((*it).min_temp + one_degree) >= MIN_ALLOWABLE_TEMP)) {
                     (*it).set_desired_min_temp_adc((*it).min_temp + one_degree, selected_zone);
+                }
+            }
+        }
+        else if (screen == EDIT_ZONE_NAME) {
+            if (previousTouch == new_name_save.tag) {
+                strncpy((*it).zone_name, zone_name_helper, sizeof(zone_name_helper));
+                (*it).save(selected_zone);
+                screen = MAIN;
+            }
+            else if (previousTouch == new_name_cancel.tag) {
+                zone_name_helper[0] = '\0';
+                screen = MAIN;
+            }
+            else if (previousTouch == gui_keyboard.keyboard_shift_lock.tag) {
+                gui_keyboard.shift_press();
+            }
+            else if (previousTouch == gui_keyboard.keyboard_BS.tag) {
+                if (strlen(zone_name_helper) > 0) {
+                    zone_name_helper[strlen(zone_name_helper)-1] = '\0';
+                }
+            }
+            else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag)) {
+                // keyboard press
+                if (strlen(zone_name_helper) < (sizeof(zone_name_helper) - 1)) {
+                    char temp[2] = {char(previousTouch), '\0'};
+                    strncat(zone_name_helper, temp, sizeof(zone_name_helper));
                 }
             }
         }
@@ -480,8 +577,10 @@ void loop()
             }
             else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag)) {
                 // keyboard press
-                char temp[2] = {char(previousTouch), '\0'};
-                strncat(wifi_password, temp, sizeof(wifi_password));
+                if (strlen(wifi_password) < (sizeof(wifi_password) - 1)) {
+                    char temp[2] = {char(previousTouch), '\0'};
+                    strncat(wifi_password, temp, sizeof(wifi_password));
+                }
             }
 
         }
@@ -504,6 +603,12 @@ void loop()
                 calibration_helper = 22;
             }
         }
+        else if (screen == EDIT_ZONE_NAME) {
+            gui_keyboard.change_keyboard_position(SW/2-250,80+(SH-80)/2-10);
+        }
+        else if ((screen == SETTINGS) && (settings_screen == WIFI)) {
+            gui_keyboard.change_keyboard_position(SW/4+10+40, 80+(SH-80)/2-10);
+        }
 
     }
 
@@ -522,7 +627,7 @@ void loop()
 
 
     // Draw the screen
-    if ((((tag != 0 && tag != 255) || touch_drag == true) && millis() - timeSinceLCDUpdate > 100) || (millis() - timeSinceLCDUpdate > 100)) {
+    if ((screen_SPI_active) && ((((tag != 0 && tag != 255) || touch_drag == true) && millis() - timeSinceLCDUpdate > 100) || (millis() - timeSinceLCDUpdate > 100))) {
 
         GD.VertexFormat(0); // Need this command here or else every pixel is rendered too small
         GD.Tag(255);
@@ -570,7 +675,9 @@ void loop()
 
             GD.ColorRGB(0xffffff);
             GD.cmd_romfont(1, 34);
+            GD.Tag(4);
             GD.cmd_text(SW/2, 40, 30, OPT_CENTER, (*it).zone_name);
+            GD.Tag(255);
             GD.cmd_number(SW/2, SH/2, 1, OPT_CENTER, (*it).get_calibrated_temp(user_settings.temp_mode));
 
             GD.Tag(2);
@@ -657,6 +764,31 @@ void loop()
             GD.Vertex2f(SW/2+200, SH/2);
             GD.ColorRGB(0xffffff);
             GD.cmd_text(SW/2+200, SH/2, 31, OPT_CENTER, "+");
+
+        }
+
+        else if (screen == EDIT_ZONE_NAME) {
+
+            GD.ClearColorRGB(0x000000);
+            GD.Clear();
+            GD.Tag(255);
+
+            GD.cmd_text(SW/2, 40, 30, OPT_CENTER, "Edit Zone Name");
+
+            // (80+(80+(SH-80)/2-10))/2
+
+            GD.cmd_text(SW/4-40+10, (80+(80+(SH-80)/2-10))/2-20-40+20, 29, OPT_CENTER, "New Zone Name:");
+            drawRoundedRect(SW/2-(SW-40-(SW/4+20+120))/2+40+30+10, (80+(80+(SH-80)/2-10))/2-20-40, SW-40-(SW/4+20+120), 40, 0xffffff);
+            GD.ColorRGB(0x000000);
+            GD.cmd_text(SW/2-(SW-40-(SW/4+20+120))/2+40+30+10 + (SW-40-(SW/4+20+120))/2, (80+(80+(SH-80)/2-10))/2-20-40 + 20, 29, OPT_CENTER, zone_name_helper);
+
+            if (strlen(zone_name_helper) > 0) {
+                new_name_save.draw(tag);
+            }
+            new_name_cancel.draw(tag);
+            gui_keyboard.draw(tag);
+
+
 
 
 
