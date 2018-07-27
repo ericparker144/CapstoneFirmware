@@ -84,6 +84,7 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
     // Update information about the specific zone or vent, or add new zone/vent if not found
     if (temp_val == 0) {
+        Serial.println("Is a vent");
         // Message was from a vent
         boolean device_found = false;
 
@@ -97,6 +98,9 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
         if (!device_found) {
             // New vent, add it to the vents vector
+            Serial.print("New vent: ");
+            Serial.println(address);
+
             user_settings.num_of_vents += 1;
             vent new_vent = {address, batState};
             vents.push_back(new_vent);
@@ -300,7 +304,6 @@ void loop()
 
     if (millis() - time_since_lcd_check_in > 1000)
     {
-        Serial.println("loop");
 
         if (GD.rd(0xC0001) != 0x13 && screen_SPI_active)
         {
@@ -521,7 +524,7 @@ void loop()
                     zone_name_helper[strlen(zone_name_helper)-1] = '\0';
                 }
             }
-            else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag)) {
+            else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag) || (previousTouch == gui_keyboard.keyboard_space.tag)) {
                 // keyboard press
                 if (strlen(zone_name_helper) < (sizeof(zone_name_helper) - 1)) {
                     char temp[2] = {char(previousTouch), '\0'};
@@ -575,7 +578,7 @@ void loop()
                     wifi_password[strlen(wifi_password)-1] = '\0';
                 }
             }
-            else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag)) {
+            else if (((previousTouch >= '0') && (previousTouch <= '9')) || ((previousTouch >= 'A') && (previousTouch <= 'Z')) || ((previousTouch >= 'a') && (previousTouch <= 'z')) || (previousTouch == gui_keyboard.keyboard_sh1.tag) || (previousTouch == gui_keyboard.keyboard_sh2.tag) || (previousTouch == gui_keyboard.keyboard_sh3.tag) || (previousTouch == gui_keyboard.keyboard_sh4.tag) || (previousTouch == gui_keyboard.keyboard_sh5.tag) || (previousTouch == gui_keyboard.keyboard_sh6.tag) || (previousTouch == gui_keyboard.keyboard_sh7.tag) || (previousTouch == gui_keyboard.keyboard_sh8.tag) || (previousTouch == gui_keyboard.keyboard_sh9.tag) || (previousTouch == gui_keyboard.keyboard_sh0.tag) || (previousTouch == gui_keyboard.keyboard_space.tag)) {
                 // keyboard press
                 if (strlen(wifi_password) < (sizeof(wifi_password) - 1)) {
                     char temp[2] = {char(previousTouch), '\0'};

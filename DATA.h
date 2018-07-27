@@ -321,7 +321,7 @@ public:
     // std::queue<zone_command_metadata> zones_to_service; // Zones that will
 
     void init(std::vector<zone> zones) {
-        command_delay.setValue(30000);
+        command_delay.setValue(10000);
         command_delay.setToZero();
         num_of_zones = zones.size();
         for (auto it = zones.begin(); it != zones.end(); ++it) {
@@ -350,40 +350,49 @@ public:
 
 
 
-
-
-        if (_zone.get_calibrated_temp_adc() < _zone.min_temp) {
-            switch ((*it).temp_indicator) {
-                case 0:
-                    (*it).out_of_range_count = 1;
-                    break;
-                case 1:
-                    (*it).out_of_range_count += 1;
-                    break;
-                case 2:
-                    (*it).out_of_range_count = 1;
-                    break;
+        if ((*it).temp_indicator != 3) {
+            // Zone is currently not in heating process
+            if (_zone.get_calibrated_temp_adc() < _zone.min_temp) {
+                switch ((*it).temp_indicator) {
+                    case 0:
+                        (*it).out_of_range_count = 1;
+                        break;
+                    case 1:
+                        (*it).out_of_range_count += 1;
+                        break;
+                    case 2:
+                        (*it).out_of_range_count = 1;
+                        break;
+                }
+                (*it).temp_indicator = 1;
             }
-            (*it).temp_indicator = 1;
-        }
-        else if (_zone.get_calibrated_temp_adc() > _zone.max_temp) {
-            switch ((*it).temp_indicator) {
-                case 0:
-                    (*it).out_of_range_count = 1;
-                    break;
-                case 1:
-                case 3:
-                    (*it).out_of_range_count = 1;
-                    break;
-                case 2:
-                    (*it).out_of_range_count += 1;
-                    break;
+            else if (_zone.get_calibrated_temp_adc() > _zone.max_temp) {
+                switch ((*it).temp_indicator) {
+                    case 0:
+                        (*it).out_of_range_count = 1;
+                        break;
+                    case 1:
+                        (*it).out_of_range_count = 1;
+                        break;
+                    case 2:
+                        (*it).out_of_range_count += 1;
+                        break;
+                }
+                (*it).temp_indicator = 2;
             }
-            (*it).temp_indicator = 2;
+            else {
+                (*it).out_of_range_count = 0;
+                (*it).temp_indicator = 0;
+            }
         }
         else {
-            (*it).out_of_range_count = 0;
-            (*it).temp_indicator = 0;
+            // Zone is currently being heated, wait until temperature is exceeded allowable_out_of_range times
+            if (_zone.get_calibrated_temp_adc() > _zone.max_temp) {
+                (*it).out_of_range_count += 1;
+            }
+            else {
+                (*it).out_of_range_count = 0;
+            }
         }
     }
 
@@ -404,33 +413,56 @@ public:
 
             int degrees;
 
-            // Serial.printf("Temp indicator: %d", (*it).temp_indicator);
-            // Serial.println();
 
-            switch ((*it).temp_indicator) {
-                case 1:
-                    degrees = DEGREES_FULLY_OPEN;
-                    // Indicate that the zone needs to be heated to max_temp
-                    (*it).temp_indicator = 3;
-                    heat_on = true;
-                    break;
-                case 0:
-                case 2:
-                    degrees = DEGREES_FULLY_CLOSED;
-                    boolean needs_heat = false;
-                    for (auto test_all_zones = zones_to_control.begin(); test_all_zones != zones_to_control.end(); ++test_all_zones) {
-                        if ((*test_all_zones).temp_indicator == 1) {
-                            needs_heat = true;
+            Serial.println("Check command");
+            Serial.print("Address: ");
+            Serial.println((*it).address);
+            Serial.print("out_of_range_count: ");
+            Serial.println((*it).out_of_range_count);
+            Serial.println((*it).out_of_range_count >= allowable_out_of_range);
+
+
+
+            if ((*it).out_of_range_count >= allowable_out_of_range) {
+
+                // Serial.printf("Temp indicator: %d", (*it).temp_indicator);
+                // Serial.println();
+                Serial.println("allowable_out_of_range exceeded, issuing command");
+
+                switch ((*it).temp_indicator) {
+                    case 1:
+                        degrees = DEGREES_FULLY_OPEN;
+                        // Indicate that the zone needs to be heated to max_temp
+                        (*it).temp_indicator = 3;
+                        (*it).out_of_range_count = 0;
+                        heat_on = true;
+                        break;
+                    case 3:
+                        // If here, that means temp has been over max_temp enough times, change out of heating mode
+                        (*it).temp_indicator = 2;
+                        (*it).out_of_range_count = 0;
+                    case 0:
+                    case 2:
+                        degrees = DEGREES_FULLY_CLOSED;
+                        boolean needs_heat = false;
+                        for (auto test_all_zones = zones_to_control.begin(); test_all_zones != zones_to_control.end(); ++test_all_zones) {
+                            if (((*test_all_zones).temp_indicator == 1) || ((*test_all_zones).temp_indicator == 3)) {
+                                needs_heat = true;
+                            }
                         }
-                    }
-                    heat_on = needs_heat;
-                    break;
+                        heat_on = needs_heat;
+                        break;
+                }
+
+                Serial.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+                Serial.println();
+                Serial1.printf("{address:%d,degrees:%d}", (*it).address, degrees);
+                Serial.println();
+
             }
 
-            // Serial.printf("{address:%d,degrees:%d}", (*it).address, degrees);
-            // Serial.println();
-            // Serial1.printf("{address:%d,degrees:%d}", (*it).address, degrees);
-            // Serial.println();
+
+
 
 
             if (current_zone == num_of_zones) {
@@ -439,7 +471,6 @@ public:
             else {
                 current_zone++;
             }
-
             command_delay.reset();
         }
     }
