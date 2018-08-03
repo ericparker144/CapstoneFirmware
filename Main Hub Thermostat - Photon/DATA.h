@@ -206,7 +206,6 @@ public:
     }
 
     void set_desired_min_temp(int _temp, int temp_mode, int selected_zone) {
-        // TODO: Update EEPROM
         if (temp_mode == TEMP_MODE_FAHR) {
             min_temp = conv_fahr_to_adc(_temp);
         }
@@ -219,7 +218,6 @@ public:
     }
 
     void set_desired_max_temp(int _temp, int temp_mode, int selected_zone) {
-        // TODO: Update EEPROM
         if (temp_mode == TEMP_MODE_FAHR) {
             max_temp = conv_fahr_to_adc(_temp);
         }
@@ -425,8 +423,8 @@ public:
 
             if ((*it).out_of_range_count >= allowable_out_of_range) {
 
-                // Serial.printf("Temp indicator: %d", (*it).temp_indicator);
-                // Serial.println();
+                Serial.printf("Temp indicator: %d", (*it).temp_indicator);
+                Serial.println();
                 Serial.println("allowable_out_of_range exceeded, issuing command");
 
                 switch ((*it).temp_indicator) {
@@ -569,4 +567,29 @@ int conv_cels_to_fahr(int temp_cels) {
 
 int conv_fahr_to_cels(int temp_fahr) {
     return int((float(temp_fahr) - 32.0)*5.0/9.0 + 0.5);
+}
+
+int octalToDecimal(int n)
+{
+    int num = n;
+    int dec_value = 0;
+
+    // Initializing base value to 1, i.e 8^0
+    int base = 1;
+
+    int temp = num;
+    while (temp) {
+
+        // Extracting last digit
+        int last_digit = temp % 10;
+        temp = temp / 10;
+
+        // Multiplying last digit with appropriate
+        // base value and adding it to dec_value
+        dec_value += last_digit * base;
+
+        base = base * 8;
+    }
+
+    return dec_value;
 }

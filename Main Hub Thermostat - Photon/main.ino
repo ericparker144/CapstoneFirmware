@@ -7,6 +7,7 @@
 #define SW 800 // Screen Width
 #define SH 480 // Screen Height
 #define TEMPERATURE_READ_INTERVAL 10000
+#define CLOUD_UPDATE_INTERVAL 60000
 #define SERIAL_BUFFER_SIZE 100
 #define DEFAULT_MIN_TEMP_FAHR 68
 #define DEFAULT_MAX_TEMP_FAHR 74
@@ -20,6 +21,8 @@ uint32_t time_since_lcd_check_in = 0;
 
 char serial_buffer[SERIAL_BUFFER_SIZE] = {'\0'};
 size_t serial_buffer_offset = 0;
+
+String cloud_data = "";
 
 custom_settings user_settings;
 char previousTouch;
@@ -59,6 +62,7 @@ button new_name_save = {1, SW/2-150-5, 80+40+40+40-5-20, 150, 60, 28, 0x215968, 
 button new_name_cancel = {2, SW/2+5, 80+40+40+40-5-20, 150, 60, 28, 0x215968, "Cancel"};
 
 timer main_hub_temp_timer(TEMPERATURE_READ_INTERVAL);
+timer cloud_update_timer(CLOUD_UPDATE_INTERVAL);
 int selected_zone = 1;
 std::vector<zone> zones;
 std::vector<vent> vents;
@@ -77,7 +81,7 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
     Serial.println(serial_buffer);
     String serial_string = String(serial_buffer);
 
-    int address = serial_string.substring(serial_string.indexOf(param1) + param1.length(), serial_string.indexOf(param2) - 1).toInt();
+    int address = octalToDecimal(serial_string.substring(serial_string.indexOf(param1) + param1.length(), serial_string.indexOf(param2) - 1).toInt());
     boolean batState = boolean(serial_string.substring(serial_string.indexOf(param2) + param2.length(), serial_string.indexOf(param3) - 1).toInt());
     int temp_val = serial_string.substring(serial_string.indexOf(param3) + param3.length(), serial_string.indexOf("}")).toInt();
 
@@ -109,7 +113,7 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
             user_settings.save();
         }
     }
-    else {
+    else if ((address == 02) || (address == 03) || (address == 04)) {
         // Message was from a router
         boolean device_found = false;
 
@@ -125,6 +129,8 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 
         if (!device_found) {
             // New router, add it to the zones vector
+            Serial.print("New zone: ");
+            Serial.println(address);
             user_settings.num_of_zones += 1;
             zone new_zone = {ATMEGA, temp_val, 0, 0, 1, "New Zone", address, 0, batState};
             new_zone.set_desired_min_temp(((user_settings.temp_mode == TEMP_MODE_FAHR) ? DEFAULT_MIN_TEMP_FAHR : DEFAULT_MIN_TEMP_CELS), user_settings.temp_mode, selected_zone);
@@ -142,6 +148,106 @@ void handleSerialInput(std::vector<zone> & zones, std::vector<vent> & vents) {
 }
 
 
+// void update_cloud() {
+//
+//     cloud_data = "[";
+//     for (auto it = zones.begin(); it != zones.end(); ++it) {
+//
+//         String temp = (*it).zone_name;
+//
+//         cloud_data += "{";
+//         cloud_data += "\"name\":" + String::format("\"%s\",", temp);
+//         cloud_data += "\"tmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).get_calibrated_temp_adc(), user_settings.temp_mode));
+//         cloud_data += "\"mintmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).min_temp, user_settings.temp_mode));
+//         cloud_data += "\"maxtmp\":" + String::format("%d", (*it).conv_adc_to_temp((*it).max_temp, user_settings.temp_mode));
+//         cloud_data += "},";
+//     }
+//     cloud_data = cloud_data.substring(0, cloud_data.length()-1);
+//     cloud_data += "]";
+//
+//     Serial.print("Cloud data: ");
+//     Serial.println(cloud_data);
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+int updateTemperatureRange (String command)
+{
+
+    Serial.print("Cloud Update Zone");
+
+    // Example command string: "temp_min:123,temp_max:321"
+    int temp_min = command.substring(command.indexOf("temp_min:") + 9, command.indexOf(",temp_max:")).toInt();
+    int temp_max = command.substring(command.indexOf("temp_max:") + 9, command.indexOf(",zone:")).toInt();
+    int zone_num = command.substring(command.indexOf("zone:") + 5).toInt();
+    Serial.println(temp_min);
+    Serial.println(temp_max);
+    Serial.println(zone_num);
+
+    auto it = zones.begin();
+
+    for (int i = 1; i < zone_num; i++) {
+
+        it++;
+
+    }
+
+
+    (*it).set_desired_min_temp(temp_min, user_settings.temp_mode, zone_num);
+    (*it).set_desired_max_temp(temp_max, user_settings.temp_mode, zone_num);
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 void setup()
@@ -156,7 +262,6 @@ void setup()
     screen_SPI_active = true;
     // GD.cmd_calibrate();
     GD.cmd_setrotate(0);
-
 
 
 
@@ -199,19 +304,19 @@ void setup()
         }
     }
 
-    Serial.println("EERPOM:");
-    for (int i = EEPROM_START; i < EEPROM.length(); i++) {
-        Serial.printf("%d: %d", i, EEPROM.read(i));
-        Serial.println();
-    }
-
-
-
+    // Serial.println("EERPOM:");
+    // for (int i = EEPROM_START; i < EEPROM.length(); i++) {
+    //     Serial.printf("%d: %d", i, EEPROM.read(i));
+    //     Serial.println();
+    // }
 
     // Configure temperature reading pin
     pinMode(A0, INPUT);
     pinMode(D0, OUTPUT);
     main_hub_temp_timer.setToZero();
+    cloud_update_timer.reset();
+    zones.at(0).temp = analogRead(A0);
+
     Time.zone(user_settings.time_zone);
     networks_found = WiFi.scan(aps, 5);
     if (user_settings.temp_mode == TEMP_MODE_FAHR) {
@@ -255,6 +360,7 @@ void setup()
     // vents.push_back(vent5);
 
 
+    Particle.function("updateTemp", updateTemperatureRange);
 
     // for (auto i : zones) {
     //     Serial.println(i.temp);
@@ -269,6 +375,35 @@ void setup()
 
     // Initialize the temperature appropriately for the zones
     temp_commander.init(zones);
+
+    delay(1000);
+
+
+
+    cloud_data = "[";
+    for (auto it = zones.begin(); it != zones.end(); ++it) {
+
+        String temp = (*it).zone_name;
+
+        cloud_data += "{";
+        cloud_data += "\"name\":";
+        cloud_data += "\"";
+        cloud_data += temp;
+        cloud_data += "\",";
+        cloud_data += "\"tmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).get_calibrated_temp_adc(), user_settings.temp_mode));
+        cloud_data += "\"mintmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).min_temp, user_settings.temp_mode));
+        cloud_data += "\"maxtmp\":" + String::format("%d", (*it).conv_adc_to_temp((*it).max_temp, user_settings.temp_mode));
+        cloud_data += "},";
+    }
+    cloud_data = cloud_data.substring(0, cloud_data.length()-1);
+    cloud_data += "]";
+
+    Serial.print("Cloud data: ");
+    Serial.println(cloud_data);
+
+
+    Particle.variable("cloud_data", cloud_data);
+
 
     Serial.println("SETUP COMPLETE.");
 
@@ -359,6 +494,7 @@ void loop()
     // Get reference to the selected zone
     auto it = zones.begin();
 
+    // Update temperature of main hun
     if (main_hub_temp_timer.check()) {
         (*it).temp = analogRead(A0);
         temp_commander.update_zone((*it));
@@ -1103,7 +1239,16 @@ void loop()
                 std::vector<vent> vents_in_zone;
                 int selected_zone_address = (*it).address;
 
+                // Serial.print("Num of vents: ");
+                // Serial.println(vents.size());
+
                 for (auto i : vents) {
+
+                    // Serial.print("Vent zone number: ");
+                    // Serial.println(i.zone_number());
+                    // Serial.print("Selected zone address: ");
+                    // Serial.println(selected_zone_address);
+
                     if (i.zone_number() == selected_zone_address) {
                         // Vent belongs to this zone
                         vents_in_zone.push_back(i);
@@ -1111,6 +1256,8 @@ void loop()
                 }
 
                 int num_of_vents_in_zone = vents_in_zone.size();
+                // Serial.print("Number of vents in zone: ");
+                // Serial.println(num_of_vents_in_zone);
                 auto vents_it = vents_in_zone.begin();
 
                 for (int i = 0; i < num_of_vents_in_zone; i++) {
@@ -1121,7 +1268,7 @@ void loop()
                     else {
                         drawBattery((SW/4 + SW)/2 + i*120 - 120*(num_of_vents_in_zone-1)/2 - 18/2, SH/2+40+40-50-20+80-coord_offset, 18, 30, 0xeb3332);
                     }
-
+                    vents_it++;
 
                 }
 
@@ -1163,6 +1310,34 @@ void loop()
         GD.swap();
         timeSinceLCDUpdate = millis();
 
+    }
+
+
+
+
+    if (cloud_update_timer.check()) {
+        // update_cloud();
+        cloud_data = "[";
+        for (auto it = zones.begin(); it != zones.end(); ++it) {
+
+            String temp = (*it).zone_name;
+
+            cloud_data += "{";
+            cloud_data += "\"name\":";
+            cloud_data += "\"";
+            cloud_data += temp;
+            cloud_data += "\",";
+            cloud_data += "\"tmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).get_calibrated_temp_adc(), user_settings.temp_mode));
+            cloud_data += "\"mintmp\":" + String::format("%d,", (*it).conv_adc_to_temp((*it).min_temp, user_settings.temp_mode));
+            cloud_data += "\"maxtmp\":" + String::format("%d", (*it).conv_adc_to_temp((*it).max_temp, user_settings.temp_mode));
+            cloud_data += "},";
+        }
+        cloud_data = cloud_data.substring(0, cloud_data.length()-1);
+        cloud_data += "]";
+
+        Serial.print("Cloud data: ");
+        Serial.println(cloud_data);
+        cloud_update_timer.reset();
     }
 
 
